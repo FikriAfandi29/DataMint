@@ -525,8 +525,11 @@ async function startViteMiddleware() {
   }
 }
 
-startViteMiddleware().then(() => {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[DataMint Full-Stack Engine] Run success on http://0.0.0.0:${PORT}`);
+// For Vercel Serverless Support
+export default app;
+
+if (process.env.NODE_ENV !== 'production') {
+  startViteMiddleware().then(() => {
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   });
-});
+}

@@ -1,37 +1,27 @@
-export interface DatasetMetadata {
-  frequency: string;
-  unit: string;
-  lastUpdated: string;
-  observations: string | number;
-  sourceUrl: string;
-}
-
-export interface ChartSeries {
-  key: string;
-  name: string;
-  type: 'line' | 'bar';
-  color: 'navy' | 'mint' | string;
-}
-
-export interface ChartPoint {
-  label: string;
-  [key: string]: string | number;
-}
-
 export interface Dataset {
   id?: string;
   title: string;
   description?: string;
-  createdDaysAgo?: number;
-  rowCount?: number;
-  status?: string;
   sources: string[];
-  metadata: DatasetMetadata;
-  columns: string[];
-  data: Record<string, string>[];
-  chartSeries: ChartSeries[];
-  chartData: ChartPoint[];
   processingTime?: string;
+  warning?: string;
+  metadata: {
+    frequency: string;
+    unit: string;
+    lastUpdated: string;
+    observations: string;
+    sourceUrl: string;
+  };
+  columns: string[];
+  data: Record<string, any>[];
+  chartSeries: {
+    key: string;
+    name: string;
+    type: "line" | "bar";
+    color: string;
+  }[];
+  chartData: Record<string, any>[];
+  rowCount?: number;
 }
 
 export interface SavedQuery {
@@ -39,8 +29,8 @@ export interface SavedQuery {
   title: string;
   description: string;
   timeAgo: string;
-  frequency: string;
   rawQuery: string;
+  frequency: string;
 }
 
 export interface DownloadItem {
@@ -60,7 +50,6 @@ export interface DataSource {
   status: string;
   url: string;
   category: string;
+  description: string;
   lastTested?: string;
-  description?: string;
 }
-
