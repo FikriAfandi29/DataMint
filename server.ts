@@ -211,8 +211,17 @@ function executePythonAgent(query: string): Promise<any> {
     let stdout = "";
     let stderr = "";
 
-    py.stdout.on("data", (data) => stdout += data.toString());
-    py.stderr.on("data", (data) => stderr += data.toString());
+    py.stdout.on("data", (data) => {
+      const txt = data.toString();
+      stdout += txt;
+      console.log("[PYTHON STDOUT]", txt);
+    });
+
+    py.stderr.on("data", (data) => {
+      const txt = data.toString();
+      stderr += txt;
+      console.error("[PYTHON STDERR]", txt);
+    });
 
     py.on("close", (code) => {
       if (code !== 0) {
