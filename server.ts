@@ -204,6 +204,10 @@ function executePythonAgent(query: string): Promise<any> {
       env: { ...process.env } // Pastikan environment variables diteruskan ke Python child-process
     });
 
+    py.on("error", (err) => {
+      reject(err);
+    });
+
     let stdout = "";
     let stderr = "";
 
