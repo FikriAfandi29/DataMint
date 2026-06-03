@@ -1,0 +1,6 @@
+{
+  "name": "DataMint",
+  "description": "Enterprise-grade AI-powered economic data discovery and analysis platform for researchers and institutions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
