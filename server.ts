@@ -9,8 +9,11 @@ import fs from "fs";
 dotenv.config();
 
 // Standard initialization for full-stack server
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 8080;
 const app = express();
+
+console.log("PORT ENV =", process.env.PORT);
+console.log("PORT USED =", PORT);
 
 app.use(express.json());
 
