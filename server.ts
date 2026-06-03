@@ -531,14 +531,8 @@ async function startViteMiddleware() {
 // For Vercel Serverless Support
 export default app;
 
-if (process.env.NODE_ENV !== 'production') {
-  startViteMiddleware().then(() => {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  });
-} else {
+startViteMiddleware().then(() => {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
   });
-}
+});
