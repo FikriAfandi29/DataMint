@@ -970,122 +970,236 @@ def fetch_imf_data(indicator_code: str, country_codes: str):
 
 def fetch_ilo_unemployment_data(country_codes: str, start_year: str = "2010"):
     """
-    Fetches official labor statistics (Unemployment Rate) from the International Labour Organization (ILO) via SDMX REST API.
-    - country_codes: The 3-letter ISO country codes separated by a plus sign '+' (e.g., 'IDN' or 'CAN+USA+GBR').
-    - start_year: The starting year for the data (e.g., '2015').
-    USE THIS when the user asks for unemployment rates, jobless statistics, or labor market data globally.
-    """
-    import re
+    Fetches official unemployment rate data from ILO SDMX API.
 
-    # Robust dictionary mapping common country names/2-letter symbols to 3-letter ISO codes
+    Examples:
+    - Indonesia
+    - USA+GBR+DEU
+    - Canada, United States, United Kingdom
+    """
+
+    import re
+    import io
+    import requests
+    import pandas as pd
+
     country_map = {
-        'indonesia': 'IDN', 'ind': 'IND',
-        'united states': 'USA', 'usa': 'USA', 'us': 'USA', 'america': 'USA',
-        'canada': 'CAN', 'can': 'CAN',
-        'united kingdom': 'GBR', 'uk': 'GBR', 'gbr': 'GBR', 'britain': 'GBR',
-        'germany': 'DEU', 'deu': 'DEU', 'germ': 'DEU',
-        'france': 'FRA', 'fra': 'FRA',
-        'japan': 'JPN', 'jpn': 'JPN',
-        'australia': 'AUS', 'aus': 'AUS',
-        'singapore': 'SGP', 'sgp': 'SGP',
-        'malaysia': 'MYS', 'mys': 'MYS',
-        'china': 'CHN', 'chn': 'CHN',
+        'indonesia': 'IDN',
+        'united states': 'USA',
+        'usa': 'USA',
+        'us': 'USA',
+        'america': 'USA',
+        'canada': 'CAN',
+        'united kingdom': 'GBR',
+        'uk': 'GBR',
+        'britain': 'GBR',
+        'germany': 'DEU',
+        'france': 'FRA',
+        'japan': 'JPN',
+        'australia': 'AUS',
+        'singapore': 'SGP',
+        'malaysia': 'MYS',
+        'china': 'CHN',
         'india': 'IND',
-        'brazil': 'BRA', 'bra': 'BRA',
-        'russia': 'RUS', 'rus': 'RUS',
-        'south africa': 'ZAF', 'zaf': 'ZAF',
-        'south korea': 'KOR', 'korea': 'KOR', 'kor': 'KOR',
-        'italy': 'ITA', 'ita': 'ITA',
-        'spain': 'ESP', 'esp': 'ESP',
-        'netherlands': 'NLD', 'nld': 'NLD',
-        'switzerland': 'CHE', 'che': 'CHE',
-        'sweden': 'SWE', 'swe': 'SWE',
-        'norway': 'NOR', 'nor': 'NOR',
-        'mexico': 'MEX', 'mex': 'MEX',
-        'argentina': 'ARG', 'arg': 'ARG',
-        'turkey': 'TUR', 'tur': 'TUR',
-        'saudi arabia': 'SAU', 'sau': 'SAU',
-        'vietnam': 'VNM', 'vnm': 'VNM',
-        'thailand': 'THA', 'tha': 'THA',
-        'philippines': 'PHL', 'phl': 'PHL',
-        'id': 'IDN', 'ca': 'CAN', 'gb': 'GBR', 'de': 'DEU', 'fr': 'FRA',
-        'jp': 'JPN', 'au': 'AUS', 'sg': 'SGP', 'my': 'MYS', 'cn': 'CHN',
-        'br': 'BRA', 'kr': 'KOR', 'it': 'ITA', 'es': 'ESP', 'nl': 'NLD',
-        'ch': 'CHE', 'se': 'SWE', 'no': 'NOR', 'mx': 'MEX', 'ar': 'ARG',
-        'tr': 'TUR', 'sa': 'SAU', 'vn': 'VNM', 'th': 'THA', 'ph': 'PHL'
+        'brazil': 'BRA',
+        'russia': 'RUS',
+        'south africa': 'ZAF',
+        'south korea': 'KOR',
+        'korea': 'KOR',
+        'italy': 'ITA',
+        'spain': 'ESP',
+        'netherlands': 'NLD',
+        'switzerland': 'CHE',
+        'sweden': 'SWE',
+        'norway': 'NOR',
+        'mexico': 'MEX',
+        'argentina': 'ARG',
+        'turkey': 'TUR',
+        'saudi arabia': 'SAU',
+        'vietnam': 'VNM',
+        'thailand': 'THA',
+        'philippines': 'PHL'
     }
 
-    # Split tokenizing input to map any recognized countries to full uppercase 3-letter codes
     tokens = re.split(r'[^a-zA-Z0-9]+', str(country_codes))
+
     resolved_codes = []
     seen = set()
-    for t in tokens:
-        t_clean = t.strip().lower()
-        if not t_clean:
+
+    for token in tokens:
+        token = token.strip().lower()
+
+        if not token:
             continue
-        if t_clean in country_map:
-            code = country_map[t_clean].upper()
-            if code not in seen:
-                resolved_codes.append(code)
-                seen.add(code)
-        elif len(t_clean) == 3:
-            code = t_clean.upper()
-            if code not in seen:
-                resolved_codes.append(code)
-                seen.add(code)
 
-    if resolved_codes:
-        country_codes_clean = "+".join(resolved_codes)
-    else:
-        # Fallback to cleaned upper text
-        country_codes_clean = re.sub(r'[^a-zA-Z0-9]+', '+', str(country_codes))
-        country_codes_clean = country_codes_clean.strip('+').upper()
+        if token in country_map:
+            code = country_map[token]
 
-    base = 'https://sdmx.ilo.org/rest/data'
-    flow = 'ILO,DF_UNE_DEAP_SEX_AGE_RT,1.0'
-    key = f'{country_codes_clean}.A.UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15'
-    url = f'{base}/{flow}/{key}'
-    
-    params = {'startPeriod': str(start_year)}
-    headers = {
-        'Accept': 'text/csv',
-        'User-Agent': 'UniversalAgenticDataMiner afandiahmadfikri@gmail.com'
-    }
-    
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        if response.status_code == 200:
-            df = pd.read_csv(io.StringIO(response.text))
-            
-            if df.empty:
-                return f"Failed to retrieve ILO data. No records found for country code(s) '{country_codes_clean}' starting from year {start_year}."
+        elif len(token) == 3:
+            code = token.upper()
 
-            if 'REF_AREA' in df.columns and 'TIME_PERIOD' in df.columns and 'OBS_VALUE' in df.columns:
-                # Deduplicate and ensure clean numeric parsing for obs columns
-                df = df.dropna(subset=['TIME_PERIOD', 'REF_AREA', 'OBS_VALUE'])
-                df['OBS_VALUE'] = pd.to_numeric(df['OBS_VALUE'], errors='coerce')
-                df = df.dropna(subset=['OBS_VALUE'])
-
-                if not df.empty:
-                    # Prevent ValueError from unstacking with duplicate indexes
-                    clean_df = df.groupby(['TIME_PERIOD', 'REF_AREA'])['OBS_VALUE'].mean().unstack()
-                    clean_df.index.name = 'Year'
-                    clean_df.columns.name = None
-                    clean_df = clean_df.reset_index()
-                else:
-                    clean_df = df
-            else:
-                clean_df = df 
-            
-            st.session_state.all_dfs.append({"title": f"ILO - Unemployment ({country_codes_clean})", "df": clean_df})
-            recent_data = clean_df.tail(10).to_string(index=False)
-            return (f"Successfully fetched ILO Unemployment Data for {country_codes_clean} starting from {start_year}. "
-                    f"Here is the recent data:\n{recent_data}\n"
-                    f"Please provide an economic analysis based on these labor market trends.")
         else:
-            return f"Failed to retrieve ILO data. Ensure the 3-letter ISO country codes are valid (e.g., IDN, USA). Status: {response.status_code}"
+            continue
+
+        if code not in seen:
+            resolved_codes.append(code)
+            seen.add(code)
+
+    if not resolved_codes:
+        return {
+            "success": False,
+            "error": f"Could not identify country code(s) from '{country_codes}'"
+        }
+
+    country_codes_clean = "+".join(resolved_codes)
+
+    base = "https://sdmx.ilo.org/rest/data"
+    flow = "ILO,DF_UNE_DEAP_SEX_AGE_RT,1.0"
+
+    key = (
+        f"{country_codes_clean}"
+        ".A.UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15"
+    )
+
+    url = f"{base}/{flow}/{key}"
+
+    params = {
+        "startPeriod": str(start_year)
+    }
+
+    headers = {
+        "Accept": "text/csv",
+        "User-Agent": "UniversalAgenticDataMiner"
+    }
+
+    try:
+
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=15
+        )
+
+        if response.status_code != 200:
+            return {
+                "success": False,
+                "error": f"ILO request failed ({response.status_code})"
+            }
+
+        df = pd.read_csv(io.StringIO(response.text))
+
+        if df.empty:
+            return {
+                "success": False,
+                "error": f"No unemployment data found for {country_codes_clean}"
+            }
+
+        required_cols = [
+            "TIME_PERIOD",
+            "REF_AREA",
+            "OBS_VALUE"
+        ]
+
+        if not all(col in df.columns for col in required_cols):
+            return {
+                "success": False,
+                "error": "Unexpected ILO response format"
+            }
+
+        df = df.dropna(
+            subset=["TIME_PERIOD", "REF_AREA", "OBS_VALUE"]
+        )
+
+        df["OBS_VALUE"] = pd.to_numeric(
+            df["OBS_VALUE"],
+            errors="coerce"
+        )
+
+        df = df.dropna(subset=["OBS_VALUE"])
+
+        clean_df = (
+            df.groupby(
+                ["TIME_PERIOD", "REF_AREA"]
+            )["OBS_VALUE"]
+            .mean()
+            .unstack()
+        )
+
+        clean_df.index.name = "Year"
+        clean_df.columns.name = None
+
+        clean_df = clean_df.reset_index()
+
+        country_names = {
+            "IDN": "Indonesia",
+            "USA": "United States",
+            "GBR": "United Kingdom",
+            "DEU": "Germany",
+            "FRA": "France",
+            "JPN": "Japan",
+            "AUS": "Australia",
+            "SGP": "Singapore",
+            "MYS": "Malaysia",
+            "CHN": "China",
+            "IND": "India",
+            "BRA": "Brazil",
+            "RUS": "Russia",
+            "ZAF": "South Africa",
+            "KOR": "South Korea",
+            "ITA": "Italy",
+            "ESP": "Spain",
+            "NLD": "Netherlands",
+            "CHE": "Switzerland",
+            "SWE": "Sweden",
+            "NOR": "Norway",
+            "MEX": "Mexico",
+            "ARG": "Argentina",
+            "TUR": "Turkey",
+            "SAU": "Saudi Arabia",
+            "VNM": "Vietnam",
+            "THA": "Thailand",
+            "PHL": "Philippines",
+            "CAN": "Canada"
+        }
+
+        clean_df.rename(
+            columns=country_names,
+            inplace=True
+        )
+
+        clean_df = clean_df.sort_values(
+            by="Year",
+            ascending=False
+        )
+
+        clean_df = clean_df.reset_index(drop=True)
+
+        title = (
+            f"ILO Unemployment Rate "
+            f"({country_codes_clean})"
+        )
+
+        st.session_state.all_dfs.append({
+            "title": title,
+            "df": clean_df
+        })
+
+        return {
+            "success": True,
+            "source": "ILO",
+            "title": title,
+            "rows": len(clean_df),
+            "data": clean_df.to_dict(
+                orient="records"
+            )
+        }
+
     except Exception as e:
-        return f"Error fetching ILO data: {str(e)}"
+        return {
+            "success": False,
+            "error": f"ILO Error: {str(e)}"
+        }
 
 
 def fetch_oecd_data(indicator: str, start_year: str = "2015"):
@@ -1520,55 +1634,144 @@ def fetch_adb_macro_data(country_code: str, category: str):
 
 def fetch_eurostat_macro_data(country_code: str, category: str, start_year: str = "2023"):
     """
-    Fetches macroeconomic data for European countries from the Eurostat API.
-    Provide the 2-letter country code (e.g., 'DE' for Germany, 'FR' for France)
-    and a category: 'gdp' or 'inflation'. You can also specify the start_year.
-    USE THIS when the user asks for European regional economic data.
-    """
-    datasets = {
-        'gdp': 'nama_10_gdp',
-        'inflation': 'prc_hicp_midx'
-    }
-    
-    category_lower = category.lower()
-    dataset_code = datasets.get(category_lower, 'nama_10_gdp')
-    
-    if category_lower == 'inflation':
-        filter_path = f"M..CP00.{country_code.upper()}"
-    else:
-        filter_path = f"A..B1GQ.{country_code.upper()}"
+    Fetches macroeconomic data from Eurostat and returns a clean structured dataset.
 
-    url = f"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/{dataset_code}/{filter_path}"
+    Parameters:
+    - country_code: DE, FR, IT, ES, NL, etc.
+    - category: 'gdp' or 'inflation'
+    - start_year: default 2023
+    """
+
+    import requests
+    import pandas as pd
+    import io
+
+    datasets = {
+        "gdp": "nama_10_gdp",
+        "inflation": "prc_hicp_midx"
+    }
+
+    country_code = country_code.upper()
+    category = category.lower()
+
+    dataset_code = datasets.get(category)
+
+    if not dataset_code:
+        return f"Unsupported category '{category}'. Use 'gdp' or 'inflation'."
+
+    # Eurostat filters
+    if category == "inflation":
+        filter_path = f"M..CP00.{country_code}"
+    else:
+        filter_path = f"A..B1GQ.{country_code}"
+
+    url = (
+        f"https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/"
+        f"{dataset_code}/{filter_path}"
+    )
+
     params = {
         "format": "SDMX-CSV",
         "startPeriod": str(start_year)
     }
-    headers = {'User-Agent': 'UniversalAgenticDataMiner afandiahmadfikri@gmail.com'}
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        if response.status_code == 200:
-            df = pd.read_csv(io.StringIO(response.text), low_memory=False)
-            if df.empty:
-                return f"No Eurostat data found for country '{country_code}' in the specified period."
-                
-            cols_to_keep = ['TIME_PERIOD', 'OBS_VALUE', 'unit', 'geo']
-            available_cols = [c for c in cols_to_keep if c in df.columns]
-            clean_df = df[available_cols].copy()
-            
-            if 'TIME_PERIOD' in clean_df.columns:
-                clean_df = clean_df.sort_values(by=['TIME_PERIOD'], ascending=False)
-                
-            title = f"Eurostat - {country_code.upper()} ({category.upper()})"
-            st.session_state.all_dfs.append({"title": title, "df": clean_df})
-            recent_data = clean_df.head(10).to_string(index=False)
-            return (f"Successfully fetched Eurostat data for {country_code.upper()} ({category}).\n"
-                    f"Here is the recent data:\n{recent_data}\n"
-                    f"Please provide an economic analysis based on these figures.")
-        else:
-            return f"Failed to retrieve Eurostat data. Status code: {response.status_code}"
-    except Exception as e:
-        return f"Error fetching Eurostat data: {str(e)}"
 
+    headers = {
+        "User-Agent": "UniversalAgenticDataMiner afandiahmadfikri@gmail.com"
+    }
+
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=15
+        )
+
+        if response.status_code != 200:
+            return f"Eurostat request failed (HTTP {response.status_code})"
+
+        df = pd.read_csv(io.StringIO(response.text), low_memory=False)
+
+        if df.empty:
+            return f"No Eurostat data found for {country_code}"
+
+        # Keep only useful columns
+        keep_cols = [
+            "TIME_PERIOD",
+            "OBS_VALUE",
+            "geo",
+            "unit"
+        ]
+
+        keep_cols = [c for c in keep_cols if c in df.columns]
+
+        df = df[keep_cols].copy()
+
+        # Rename columns
+        df.rename(columns={
+            "TIME_PERIOD": "Date",
+            "OBS_VALUE": "Value",
+            "geo": "Country",
+            "unit": "Metric"
+        }, inplace=True)
+
+        # Country name mapping
+        country_names = {
+            "DE": "Germany",
+            "FR": "France",
+            "IT": "Italy",
+            "ES": "Spain",
+            "NL": "Netherlands",
+            "BE": "Belgium",
+            "AT": "Austria",
+            "PT": "Portugal",
+            "IE": "Ireland",
+            "HU": "Hungary",
+            "PL": "Poland",
+            "CZ": "Czech Republic",
+            "RO": "Romania",
+            "BG": "Bulgaria",
+            "SE": "Sweden",
+            "DK": "Denmark",
+            "FI": "Finland"
+        }
+
+        if "Country" in df.columns:
+            df["Country"] = df["Country"].replace(country_names)
+
+        # Translate Eurostat unit codes
+        metric_map = {
+            "I15": "HICP Index",
+            "I05": "Monthly HICP",
+            "I96": "Annual HICP"
+        }
+
+        if "Metric" in df.columns:
+            df["Metric"] = df["Metric"].replace(metric_map)
+
+        # Sort latest first
+        if "Date" in df.columns:
+            df = df.sort_values("Date", ascending=False)
+
+        df = df.reset_index(drop=True)
+
+        title = f"Eurostat {country_code} {category.upper()}"
+
+        st.session_state.all_dfs.append({
+            "title": title,
+            "df": df
+        })
+
+        return {
+            "source": "Eurostat",
+            "country": country_code,
+            "category": category,
+            "rows": len(df),
+            "data": df.to_dict(orient="records")
+        }
+
+    except Exception as e:
+        return f"Eurostat Error: {str(e)}"
 
 def fetch_springer_literature(keyword: str):
     """
