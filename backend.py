@@ -1241,6 +1241,9 @@ def fetch_oecd_data(indicator: str, start_year: str = "2015"):
     try:
         headers = {'User-Agent': 'UniversalAgenticDataMiner afandiahmadfikri@gmail.com'}
         response = requests.get(url, headers=headers, timeout=10)
+        print("DEBUG OECD URL:", url)
+        print("DEBUG OECD STATUS:", response.status_code)
+        print("DEBUG OECD TEXT:", response.text[:1000])
         if response.status_code == 200:
             df = pd.read_csv(io.StringIO(response.text))
 
@@ -1258,7 +1261,11 @@ def fetch_oecd_data(indicator: str, start_year: str = "2015"):
                     f"Here is a snapshot of the recent data:\n{recent_data}\n"
                     f"Please provide an economic analysis comparing the trends among key developed nations.")
         else:
-            return f"Failed to retrieve OECD data. Status code: {response.status_code}"
+            return (
+                f"Failed to retrieve OECD data.\n"
+                f"Status: {response.status_code}\n"
+                f"Response: {response.text[:500]}"
+            )
     except Exception as e:
         return f"Error fetching OECD data: {str(e)}"
 
