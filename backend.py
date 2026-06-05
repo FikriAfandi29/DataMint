@@ -6,6 +6,19 @@ import json
 from datetime import datetime
 import socket
 
+
+def mask(v):
+    if not v:
+        return "NONE"
+    return v[:6] + "..."
+
+print("=== ENV TEST ===")
+print("BEA =", mask(os.getenv("BEA_API_KEY")))
+print("FRED =", mask(os.getenv("FRED_API_KEY")))
+print("ELSEVIER =", mask(os.getenv("ELSEVIER_API_KEY")))
+print("SPRINGER =", mask(os.getenv("SPRINGER_META_KEY")))
+print("================")
+
 # Set global timeout to prevent hanging connections in third-party packages (e.g., wbgapi, fredapi)
 socket.setdefaulttimeout(15)
 
