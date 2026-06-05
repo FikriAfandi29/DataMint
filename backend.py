@@ -2099,6 +2099,9 @@ def run_agent_query(user_query: str):
         raise RuntimeError("Gagal memanggil model Gemini untuk tahap pertama. Silakan periksa kredensial atau kuota kueri Google Cloud Gemini API Anda.")
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
+    print("=== GEMINI RESPONSE ===", file=sys.stderr)
+    print(response, file=sys.stderr)
+    
     tool_map = {
         'fetch_stock_data': fetch_stock_data,
         'fetch_macro_data': fetch_macro_data,
@@ -2121,23 +2124,62 @@ def run_agent_query(user_query: str):
     }
 
     calls = []
-    # Try looking for response.function_calls first
+
+# Try looking for response.function_calls first
     if hasattr(response, 'function_calls') and response.function_calls:
+
+        print("DEBUG: response.function_calls ditemukan", file=sys.stderr)
+
         calls = response.function_calls
+
     # Else check candidates and parts
     elif response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+
+        print("DEBUG: cek candidates", file=sys.stderr)
+
         for part in response.candidates[0].content.parts:
+
             if hasattr(part, 'function_call') and part.function_call:
+
+                print(
+                    f"DEBUG: Gemini meminta tool {part.function_call.name}",
+                    file=sys.stderr
+                )
+
                 calls.append(part.function_call)
+
             elif isinstance(part, dict) and part.get('function_call'):
+
+                try:
+                    print(
+                        f"DEBUG: Gemini meminta tool {part['function_call'].get('name')}",
+                        file=sys.stderr
+                    )
+                except Exception:
+                    pass
+
                 calls.append(part['function_call'])
+
             elif hasattr(part, 'to_json'):
+
                 try:
                     pj = part.to_json()
+
                     import json as json_mod
                     pjd = json_mod.loads(pj)
+
                     if 'functionCall' in pjd:
+
+                        try:
+                            print(
+                                f"DEBUG: Gemini meminta tool {pjd['functionCall'].get('name')}",
+                                file=sys.stderr
+                            )
+                        except Exception:
+                            pass
+
                         calls.append(pjd['functionCall'])
+
                 except Exception:
                     pass
 
@@ -2159,7 +2201,16 @@ def run_agent_query(user_query: str):
                     args_dict = dict(args)
                     print(f"DEBUG: Executing tool '{name}' with arguments {args_dict}", file=sys.stderr)
                     # Run the tool function (which appends its fetched df to st.session_state.all_dfs)
-                    tool_map[name](**args_dict)
+                    result = tool_map[name](**args_dict)
+                    print(
+                        f"DEBUG: Tool '{name}' completed successfully",
+                        file=sys.stderr
+                    )
+
+                    print(
+                        f"DEBUG RESULT: {str(result)[:1000]}",
+                        file=sys.stderr
+                    )
                 except Exception as e:
                     print(f"DEBUG: Error calling tool '{name}': {e}", file=sys.stderr)
 
