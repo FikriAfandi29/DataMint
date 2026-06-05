@@ -2392,18 +2392,34 @@ def merge_live_dataframe(res_json, df):
         if date_col is None:
             date_col = df.columns[0]
             df[date_col] = df[date_col].astype(str)
+
         else:
             try:
-                # Try converting to datetime and format as YYYY-MM-DD if possible
-                temp_series = pd.to_datetime(df[date_col], errors='coerce')
-                # If conversion is mostly successful, keep it
-                if not temp_series.isna().all():
-                    df[date_col] = temp_series.dt.strftime('%Y-%m-%d')
-                else:
+                sample = str(df[date_col].dropna().iloc[0])
+
+                # Quarterly data (2025Q1)
+                if "Q" in sample:
                     df[date_col] = df[date_col].astype(str)
+
+                # Annual data (2025)
+                elif sample.isdigit() and len(sample) == 4:
+                    df[date_col] = df[date_col].astype(str)
+
+                else:
+                    temp_series = pd.to_datetime(
+                        df[date_col],
+                        format="mixed",
+                        errors="coerce"
+                    )
+
+                    if not temp_series.isna().all():
+                        df[date_col] = temp_series.dt.strftime("%Y-%m-%d")
+                    else:
+                        df[date_col] = df[date_col].astype(str)
+
             except Exception:
                 df[date_col] = df[date_col].astype(str)
-            
+                
         columns = [str(c) for c in df.columns]
         res_json["columns"] = columns
         
