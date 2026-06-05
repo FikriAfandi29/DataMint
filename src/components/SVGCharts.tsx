@@ -37,10 +37,10 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
       canvas.width = width * scale;
       canvas.height = height * scale;
       const context = canvas.getContext("2d");
-
+      
       if (context) {
         context.scale(scale, scale);
-
+        
         // Draw elegant high fidelity background matching active theme
         context.fillStyle = isDark ? "#090d16" : "#ffffff";
         context.fillRect(0, 0, width, height);
@@ -52,7 +52,7 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
 
         // Draw the serialized SVG image
         context.drawImage(image, 0, 0, width, height);
-
+        
         // Trigger high quality secure PNG download
         const pngURL = canvas.toDataURL("image/png");
         const downloadLink = document.createElement("a");
@@ -78,9 +78,9 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
     const observer = new ResizeObserver((entries) => {
       if (!entries || entries.length === 0) return;
       const { width, height } = entries[0].contentRect;
-      setDimensions({
-        width: Math.max(width, 280),
-        height: Math.max(height, 220)
+      setDimensions({ 
+        width: Math.max(width, 150), 
+        height: Math.max(height, 100) 
       });
     });
     observer.observe(containerRef.current);
@@ -126,7 +126,14 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
 
   const getY = (numericVal: number) => {
     const ratio = (numericVal - minVal) / valDelta;
-    return height - padding.bottom - ratio * graphHeight;
+    if (type === "bar") {
+      // Ground bar heights strictly on the base axis line
+      return height - padding.bottom - ratio * graphHeight;
+    }
+    // Give line markers a beautiful 6% top/bottom visual safety margin
+    const graphMarginY = graphHeight * 0.06;
+    const contractedHeight = graphHeight - 2 * graphMarginY;
+    return height - padding.bottom - graphMarginY - ratio * contractedHeight;
   };
 
   // Convert Color Labels
@@ -147,10 +154,10 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
   });
 
   return (
-    <div id="economy-chart-container" ref={containerRef} className="w-full h-full flex flex-col relative select-none">
-      <div className="flex justify-between items-center px-2 mb-2">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100 font-display">
+    <div id="economy-chart-container" className="w-full h-full flex flex-col relative select-none">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-2 mb-3">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-xs sm:text-sm font-bold tracking-tight text-slate-800 dark:text-slate-100 font-display">
             {title}
           </span>
           <button
@@ -162,24 +169,27 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             <Download className="w-3.5 h-3.5" />
           </button>
         </div>
-        <div className="flex gap-3 text-[10px] text-slate-500 dark:text-slate-450 font-medium">
+        <div className="flex flex-wrap gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 font-semibold justify-start sm:justify-end max-w-full">
           {series.map((s) => (
-            <div key={s.key} className="flex items-center gap-1">
+            <div 
+              key={s.key} 
+              className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-slate-50 dark:bg-slate-950/40 px-2 py-0.5 rounded-md border border-slate-150 dark:border-slate-800/80 shadow-[0_1px_1px_rgba(0,0,0,0.01)] transition-all"
+            >
               <span
-                className="w-2.5 h-2.5 rounded-xs inline-block"
+                className="w-1.5 h-1.5 rounded-full inline-block shrink-0"
                 style={{ backgroundColor: getColorHex(s.color) }}
               />
-              <span className="uppercase tracking-wider">{s.name}</span>
+              <span className="uppercase tracking-wider text-[8.5px] font-bold text-slate-600 dark:text-slate-350">{s.name}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="flex-1 relative">
-        <svg
+      <div ref={containerRef} className="flex-1 relative">
+        <svg 
           ref={svgRef}
-          width={width}
-          height={height}
+          width={width} 
+          height={height} 
           className="overflow-visible font-mono text-[10px] text-slate-400"
         >
           {/* Gridlines */}
@@ -194,10 +204,10 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                 strokeDasharray="4 4"
                 strokeWidth={1}
               />
-              <text
-                x={padding.left - 8}
-                y={line.y + 3}
-                textAnchor="end"
+              <text 
+                x={padding.left - 8} 
+                y={line.y + 3} 
+                textAnchor="end" 
                 fill={isDark ? "#94a3b8" : "#64748b"}
                 className="fill-slate-400 font-medium font-mono"
               >
@@ -221,10 +231,15 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             const chartType = type === "dual" ? s.type : type;
 
             if (chartType === "bar") {
-              const barWidthMax = graphWidth / data.length;
-              const barWidth = Math.max(barWidthMax * 0.35, 6);
-              const offsetPercentage = sIdx === 0 ? -1 : 1;
-              const isMultiSeries = series.length > 1;
+              const numSeries = series.length;
+              const slotWidth = graphWidth / data.length;
+              // Cluster takes 70% of available slot space
+              const clusterWidth = slotWidth * 0.7;
+              // Divide cluster width equally among series, minimum 1.5px to avoid render failures
+              const barWidth = Math.max(clusterWidth / numSeries, 1.5);
+              
+              // Calculate starting point of the cluster relative to center
+              const clusterStart = -((numSeries * barWidth) / 2);
 
               return (
                 <g key={s.key}>
@@ -232,12 +247,23 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     const rawVal = item[s.key];
                     const numVal = typeof rawVal === "number" ? rawVal : parseFloat(String(rawVal)) || 0;
                     const xCenter = getX(itemIdx);
-                    // Clustered bars offset
-                    const x = isMultiSeries ? xCenter + offsetPercentage * (barWidth / 2) - barWidth / 2 : xCenter - barWidth / 2;
+                    
+                    // Precise clustered bar placement
+                    const x = xCenter + clusterStart + sIdx * barWidth;
+                    
                     const y = getY(numVal);
-                    const zeroY = getY(0);
-                    const barHeight = Math.abs(zeroY - y);
-                    const barTop = numVal >= 0 ? y : zeroY;
+                    // Determine baseline Y for the bar chart securely within grid bounds
+                    const baselineY = minVal >= 0 
+                      ? height - padding.bottom 
+                      : maxVal <= 0 
+                        ? padding.top 
+                        : getY(0);
+
+                    const barTop = numVal >= 0 ? y : baselineY;
+                    const barBottom = numVal >= 0 ? baselineY : y;
+                    const barHeight = Math.max(barBottom - barTop, 1);
+
+                    const isDimmed = hoveredIdx !== null && hoveredIdx !== itemIdx;
 
                     return (
                       <rect
@@ -247,8 +273,9 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                         width={barWidth}
                         height={Math.max(barHeight, 1)}
                         fill={getColorHex(s.color)}
-                        className="transition-all duration-300 hover:opacity-85"
-                        rx={1.5}
+                        opacity={isDimmed ? 0.35 : 1}
+                        className="transition-all duration-200"
+                        rx={barWidth > 3 ? 1 : 0.5}
                       />
                     );
                   })}
@@ -276,7 +303,8 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     fill="none"
                     stroke={getColorHex(s.color)}
                     strokeWidth={2}
-                    className="transition-all duration-300"
+                    opacity={hoveredIdx !== null ? 0.75 : 1}
+                    className="transition-all duration-200"
                   />
                   {data.map((item, itemIdx) => {
                     const rawVal = item[s.key];
@@ -284,16 +312,24 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     const x = getX(itemIdx);
                     const y = getY(numVal);
 
+                    const isHovered = hoveredIdx === itemIdx;
+                    const showAllDots = data.length <= 16;
+                    const isDimmed = hoveredIdx !== null && !isHovered;
+
+                    // Clean up cluttered line dots when there is too much data
+                    if (!showAllDots && !isHovered) return null;
+
                     return (
                       <circle
                         key={itemIdx}
                         cx={x}
                         cy={y}
-                        r={hoveredIdx === itemIdx ? 5 : 3.5}
-                        fill="#ffffff"
+                        r={isHovered ? 4.5 : 2.5}
+                        fill={isHovered ? getColorHex(s.color) : "#ffffff"}
                         stroke={getColorHex(s.color)}
-                        strokeWidth={hoveredIdx === itemIdx ? 3 : 2}
-                        className="transition-all duration-200 cursor-pointer"
+                        strokeWidth={isHovered ? 2 : 1.5}
+                        opacity={isDimmed ? 0.35 : 1}
+                        className="transition-all duration-150 cursor-pointer"
                         onMouseEnter={() => setHoveredIdx(itemIdx)}
                         onMouseLeave={() => setHoveredIdx(null)}
                       />
@@ -360,26 +396,28 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
         {/* Hover Tooltip Overlay */}
         {hoveredIdx !== null && (
           <div
-            className={`absolute z-20 p-3 rounded-xl shadow-xl border text-xs font-sans pointer-events-none transition-all duration-100 ${isDark
-                ? "bg-slate-950/95 text-slate-100 border-slate-800/80 shadow-emerald-950/20"
+            className={`absolute z-20 p-3 rounded-xl shadow-xl border text-xs font-sans pointer-events-none transition-all duration-100 ${
+              isDark 
+                ? "bg-slate-950/95 text-slate-100 border-slate-800/80 shadow-emerald-950/20" 
                 : "bg-white/95 text-slate-900 border-slate-200 shadow-slate-250"
-              }`}
+            }`}
             style={{
               left: `${getX(hoveredIdx) > width * 0.6 ? getX(hoveredIdx) - 175 : getX(hoveredIdx) + 15}px`,
               top: `${Math.min(Math.max(getY(Number(data[hoveredIdx][series[0].key])) - 45, 10), height - 100)}px`,
               width: "160px",
             }}
           >
-            <div className={`font-semibold text-[10px] uppercase tracking-wider mb-1.5 border-b pb-1 ${isDark ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
-              }`}>
+            <div className={`font-semibold text-[10px] uppercase tracking-wider mb-1.5 border-b pb-1 ${
+              isDark ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
+            }`}>
               Period: {data[hoveredIdx].label}
             </div>
             <div className="space-y-1.5">
               {series.map((s) => (
                 <div key={s.key} className="flex justify-between items-center gap-2 py-0.5">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                    <span 
+                      className="w-1.5 h-1.5 rounded-full shrink-0" 
                       style={{ backgroundColor: getColorHex(s.color) }}
                     />
                     <span className={`truncate text-[10px] font-medium ${isDark ? "text-slate-400" : "text-slate-650"}`}>
