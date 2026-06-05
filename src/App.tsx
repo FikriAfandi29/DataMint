@@ -53,6 +53,12 @@ export default function App() {
 
   // Dynamic Data Sources states
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const healthyCount = dataSources.filter(
+    s => s.status === "Healthy"
+  ).length;
+
+  const healthPct =
+    (healthyCount / Math.max(dataSources.length, 1)) * 100;
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [newSourceName, setNewSourceName] = useState<string>("");
   const [newSourceCode, setNewSourceCode] = useState<string>("");
@@ -1510,12 +1516,23 @@ export default function App() {
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Status Integrity</div>
                   <div className="text-xl font-bold mt-1 text-emerald-500 flex items-center gap-1.5 font-display">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                    <span>99.2% Online</span>
+                    <span>{healthPct.toFixed(1)}% Online</span>
                   </div>
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Avg Response Ping</div>
-                  <div className="text-xl font-bold mt-1 font-display">138ms</div>
+                  <div className="text-xl font-bold mt-1 font-display">
+                  {Math.round(
+                    dataSources
+                      .filter(s => s.metrics?.latencyMs)
+                      .reduce((a, b) => a + b.metrics.latencyMs, 0) /
+                    Math.max(
+                      dataSources.filter(s => s.metrics?.latencyMs).length,
+                      1
+                    )
+                  )}ms
+                </div>
+               
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Region Scope</div>

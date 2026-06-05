@@ -62,4 +62,12 @@ export interface DataSource {
   category: string;
   lastTested?: string;
   description?: string;
+  warning?: string;
+
+  metrics?: {
+    latencyMs: number;
+    httpStatus: number;
+    testedAt: string;
+    availability: string;
+  };
 }
