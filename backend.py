@@ -9,7 +9,7 @@ from groq import Groq
 
 GEMINI_MODELS = [
     "gemini-3.5-flash",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.1-pro-preview"
 ]
@@ -2173,30 +2173,38 @@ def run_agent_query(user_query: str):
                         file=sys.stderr
                     )
 
+                    groq_prompt = f"""
+                    You are DataMint.
+
+                    Return ONLY valid JSON.
+
+                    Schema:
+
+                    {{
+                    "title": "",
+                    "sources": ["Groq"],
+                    "metadata": {{
+                        "frequency": "Annual",
+                        "unit": "",
+                        "lastUpdated": "{datetime.now()}",
+                        "observations": ""
+                    }},
+                    "columns": [],
+                    "data": [],
+                    "chartSeries": [],
+                    "chartData": []
+                    }}
+
+                    User Query:
+                    {user_query}
+                    """
+
                     groq_text = call_groq(
-                        user_query,
+                        groq_prompt,
                         model_name=groq_model
                     )
 
-                    return {
-                        "title": "Groq Fallback Response",
-                        "sources": ["Groq"],
-                        "metadata": {
-                            "frequency": "Realtime",
-                            "unit": "Text",
-                            "lastUpdated": str(datetime.now()),
-                            "observations": "1",
-                            "sourceUrl": "https://console.groq.com"
-                        },
-                        "columns": ["Response"],
-                        "data": [
-                            {
-                                "Response": groq_text
-                            }
-                        ],
-                        "chartSeries": [],
-                        "chartData": []
-                    }
+                    return json.loads(groq_text)
 
                 except Exception as e:
 

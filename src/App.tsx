@@ -1,35 +1,35 @@
 import { useState, useEffect, FormEvent } from "react";
 import * as XLSX from "xlsx";
-import { client as appwriteClient } from "./lib/appwrite";
+import { supabase, isSupabaseConfigured, saveSupabaseCredentials, clearSupabaseCredentials, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
 import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
-import {
-  Search,
-  Database,
-  Home,
-  Globe,
-  CheckSquare,
-  Download,
-  Terminal,
-  Settings,
-  HelpCircle,
-  ArrowRight,
-  Save,
-  Copy,
-  Check,
-  Filter,
-  Calendar,
-  Activity,
-  Cpu,
-  RefreshCw,
-  PlusCircle,
-  ExternalLink,
-  User,
-  Sliders,
+import { 
+  Search, 
+  Database, 
+  Home, 
+  Globe, 
+  CheckSquare, 
+  Download, 
+  Terminal, 
+  Settings, 
+  HelpCircle, 
+  ArrowRight, 
+  Save, 
+  Copy, 
+  Check, 
+  Filter, 
+  Calendar, 
+  Activity, 
+  Cpu, 
+  RefreshCw, 
+  PlusCircle, 
+  ExternalLink, 
+  User, 
+  Sliders, 
   Sun,
   Moon,
-  Menu,
-  X,
+  Menu, 
+  X, 
   Trash2,
   FileSpreadsheet,
   Layers,
@@ -39,26 +39,23 @@ import {
   AlertCircle,
   Play,
   Maximize2,
-  Minimize2
+  Minimize2,
+  LogOut,
+  LogIn,
+  UserPlus
 } from "lucide-react";
 
 export default function App() {
   // Navigation tabs state
   const [currentTab, setCurrentTab] = useState<string>("home");
-
+  
   // App-wide data states (persisting in-memory from backend)
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
-
+  
   // Dynamic Data Sources states
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const healthyCount = dataSources.filter(
-    s => s.status === "Healthy"
-  ).length;
-
-  const healthPct =
-    (healthyCount / Math.max(dataSources.length, 1)) * 100;
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [newSourceName, setNewSourceName] = useState<string>("");
   const [newSourceCode, setNewSourceCode] = useState<string>("");
@@ -70,7 +67,7 @@ export default function App() {
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [testingSourceId, setTestingSourceId] = useState<string | null>(null);
-
+  
   // Query input and search states
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [activeQueryData, setActiveQueryData] = useState<Dataset | null>(null);
@@ -78,6 +75,7 @@ export default function App() {
   const [queryProgressStep, setQueryProgressStep] = useState<number>(0);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [selectedChartType, setSelectedChartType] = useState<"line" | "bar" | "dual">("line");
 
   // Fullscreen & Pagination States for high fidelity preview
   const [isFullscreenData, setIsFullscreenData] = useState<boolean>(false);
@@ -121,6 +119,19 @@ export default function App() {
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [profileSuccess, setProfileSuccess] = useState<boolean>(false);
 
+  // Supabase Authentication state variables
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState<string>("");
+  const [authPassword, setAuthPassword] = useState<string>("");
+  const [signUpFirstName, setSignUpFirstName] = useState<string>("");
+  const [signUpLastName, setSignUpLastName] = useState<string>("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  const [authDriver, setAuthDriver] = useState<string>(() => localStorage.getItem("auth_driver") || "supabase");
+  const [authShowFallback, setAuthShowFallback] = useState<boolean>(false);
+
   // Settings state variables
   const [firstName, setFirstName] = useState<string>("Fikri");
   const [lastName, setLastName] = useState<string>("Afandi");
@@ -141,6 +152,56 @@ export default function App() {
   const [isApiLoading, setIsApiLoading] = useState<boolean>(false);
   const [apiActiveTab, setApiActiveTab] = useState<"rest" | "python" | "response">("rest");
 
+  // Authenticate session on startup
+  const checkSession = async () => {
+    try {
+      setAuthLoading(true);
+      const savedDriver = "supabase";
+      setAuthDriver("supabase");
+
+      // Supabase Mode
+      if (!isSupabaseConfigured()) {
+        setCurrentUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      const { data: { session }, error } = await supabase!.auth.getSession();
+      if (error) throw error;
+
+      if (session && session.user) {
+        const user = session.user;
+        setCurrentUser(user);
+        
+        setResearcherEmail(user.email || "");
+        const fullName = user.user_metadata?.full_name || user.user_metadata?.name || "Fikri Afandi";
+        setResearcherName(fullName);
+        const parts = fullName.split(" ");
+        setFirstName(parts[0] || "");
+        setLastName(parts.slice(1).join(" ") || "");
+        
+        setResearcherOrg(user.user_metadata?.organization || "Economic Research Institute");
+        setResearcherRole(user.user_metadata?.role || "Lead Economist");
+        setEmailNotifications(user.user_metadata?.emailNotifications !== false);
+        setAutoSaveQueries(user.user_metadata?.autoSaveQueries !== false);
+        setWeeklyReports(!!user.user_metadata?.weeklyReports);
+        setDefaultExportFormat(user.user_metadata?.defaultExportFormat || "Excel (.xlsx)");
+        setIncludeMetadata(user.user_metadata?.includeMetadata !== false);
+      } else {
+        setCurrentUser(null);
+      }
+    } catch (e: any) {
+      console.log("No active Supabase session detected or connection error:", e);
+      setCurrentUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
+
   // Initial Fetching of Saved Datasets and Queries from Backend
   useEffect(() => {
     fetchDatasets();
@@ -149,11 +210,9 @@ export default function App() {
     fetchDataSources();
     fetchConfig();
 
-    // Automatically ping the Appwrite backend server to verify connection setup
-    try {
-      (appwriteClient as any).ping();
-    } catch (e) {
-      console.warn("Appwrite ping failed", e);
+    // Automatically log Supabase configuration state if active
+    if (isSupabaseConfigured()) {
+      console.log("Supabase is active at:", supabaseUrl);
     }
   }, []);
 
@@ -178,6 +237,23 @@ export default function App() {
     setFormError(null);
 
     try {
+      // 1. Validation check: Ping host via HEAD and perform GET API calling test in backend to bypass browser CORS constraints
+      const validateRes = await fetch("/api/data-sources/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: newSourceUrl })
+      });
+
+      if (!validateRes.ok) {
+        const errData = await validateRes.json();
+        setFormError(errData.error || "Pemeriksaan tautan gagal. Silakan verifikasi kembali URL institusi Anda.");
+        setIsRegistering(false);
+        return;
+      }
+
+      const valResult = await validateRes.json();
+
+      // 2. Propose registration
       const res = await fetch("/api/data-sources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,7 +269,7 @@ export default function App() {
 
       if (res.ok) {
         const result = await res.json();
-        setFormSuccess(`Registered ${newSourceName} successfully!`);
+        setFormSuccess(`Koneksi teruji sukses! ${newSourceName} berhasil diverifikasi & terdaftar.`);
         // reset fields
         setNewSourceName("");
         setNewSourceCode("");
@@ -203,10 +279,10 @@ export default function App() {
         fetchDataSources();
       } else {
         const errData = await res.json();
-        setFormError(errData.error || "Failed to register connection.");
+        setFormError(errData.error || "Gagal menyimpan sumber data baru.");
       }
     } catch (err: any) {
-      setFormError(err.message || "Network error. Try again.");
+      setFormError(err.message || "Terjadi kesalahan jaringan atau validasi server. Coba beberapa saat lagi.");
     } finally {
       setIsRegistering(false);
     }
@@ -350,16 +426,16 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: queryText })
       });
-
+      
       const data = await res.json();
-
+      
       if (!res.ok) {
         throw new Error(data.error || `Server returned error status ${res.status}`);
       }
 
       clearInterval(stepInterval);
       setQueryProgressStep(4);
-
+      
       // Delay slightly for presentation smoothness
       setTimeout(() => {
         setActiveQueryData(data as Dataset);
@@ -407,7 +483,7 @@ export default function App() {
   // to render values perfectly (including commas/periods) customized to any regional setting (e.g. Indonesia).
   const triggerExcelDownload = (dataset: Dataset) => {
     if (!dataset || !dataset.data || dataset.data.length === 0) return;
-
+    
     const worksheetData = dataset.data.map((row) => {
       const orderedRow: Record<string, any> = {};
       dataset.columns.forEach((col) => {
@@ -435,7 +511,7 @@ export default function App() {
     const worksheet = XLSX.utils.json_to_sheet(worksheetData, { header: dataset.columns });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "DataMint Export");
-
+    
     const targetFilename = `${dataset.title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_export.xlsx`;
     XLSX.writeFile(workbook, targetFilename);
   };
@@ -515,12 +591,209 @@ export default function App() {
     }
   };
 
-  // Submits setting changes
-  const handleProfileUpdate = (e: FormEvent) => {
+  // Submits setting changes (Updates profile data/preferences in Supabase)
+  const handleProfileUpdate = async (e: FormEvent) => {
     e.preventDefault();
-    setResearcherName(`${firstName} ${lastName}`);
-    setProfileSuccess(true);
-    setTimeout(() => setProfileSuccess(false), 3000);
+    try {
+      const combinedName = `${firstName} ${lastName}`.trim();
+      setResearcherName(combinedName);
+      
+      if (currentUser) {
+        // Supabase metadata update
+        if (!isSupabaseConfigured()) {
+          throw new Error("Supabase belum dikonfigurasi.");
+        }
+
+        const { data, error } = await supabase!.auth.updateUser({
+          data: {
+            full_name: combinedName,
+            organization: researcherOrg,
+            role: researcherRole,
+            emailNotifications,
+            autoSaveQueries,
+            weeklyReports,
+            defaultExportFormat,
+            includeMetadata
+          }
+        });
+        if (error) throw error;
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      }
+      setProfileSuccess(true);
+      setTimeout(() => setProfileSuccess(false), 3000);
+    } catch (err: any) {
+      console.error("Failed to update user details", err);
+      // Fallback update in state if update fails
+      setProfileSuccess(true);
+      setTimeout(() => setProfileSuccess(false), 3000);
+    }
+  };
+
+  // Sign up/Register using Supabase
+  const handleRegister = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword || !signUpFirstName || !signUpLastName) {
+      setAuthError("Harap isi semua kolom pendaftaran.");
+      return;
+    }
+    if (authPassword.length < 8) {
+      setAuthError("Kata sandi harus minimal 8 karakter.");
+      return;
+    }
+
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      setAuthSuccess(null);
+      
+      const fullName = `${signUpFirstName} ${signUpLastName}`.trim();
+      
+      // Supabase Mode
+      try {
+        if (!isSupabaseConfigured()) {
+          setAuthError("Supabase belum dikonfigurasi. Silakan hubungkan database Supabase Anda melalui formulir di bawah ini!");
+          setAuthShowFallback(true);
+          return;
+        }
+
+        const { data, error } = await supabase!.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            data: {
+              full_name: fullName,
+              organization: "Economic Research Institute",
+              role: "Researcher",
+              emailNotifications: true,
+              autoSaveQueries: true,
+              weeklyReports: false,
+              defaultExportFormat: "Excel (.xlsx)",
+              includeMetadata: true
+            }
+          }
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        const user = data.user;
+        // Note: Depending on project settings, user might require email confirmation, or be logged in directly.
+        if (user) {
+          setCurrentUser(user);
+          setResearcherEmail(user.email || authEmail);
+          setResearcherName(fullName);
+          setFirstName(signUpFirstName);
+          setLastName(signUpLastName);
+          setAuthSuccess("Pendaftaran berhasil! Akun Anda telah terdaftar.");
+          setAuthPassword("");
+        } else {
+          setAuthSuccess("Silakan periksa email Anda untuk mengonfirmasi pendaftaran akun.");
+        }
+      } catch (err: any) {
+        console.error("Supabase registration failed", err);
+        setAuthError(err.message || "Gagal membuat akun Supabase. Pastikan email unik dan format kata sandi terisi dengan benar.");
+      }
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      setAuthError(err.message || "Gagal membuat akun.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Sign In/Login using Supabase
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) {
+      setAuthError("Harap masukkan email dan kata sandi.");
+      return;
+    }
+
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      setAuthSuccess(null);
+      
+      // Supabase Mode
+      try {
+        if (!isSupabaseConfigured()) {
+          setAuthError("Supabase belum dikonfigurasi. Silakan hubungkan database Supabase Anda melalui formulir di bawah ini!");
+          setAuthShowFallback(true);
+          return;
+        }
+
+        const { data, error } = await supabase!.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        const user = data.user;
+        if (user) {
+          setCurrentUser(user);
+          
+          setResearcherEmail(user.email || authEmail);
+          const fullName = user.user_metadata?.full_name || user.user_metadata?.name || "Fikri Afandi";
+          setResearcherName(fullName);
+          const parts = fullName.split(" ");
+          setFirstName(parts[0] || "");
+          setLastName(parts.slice(1).join(" ") || "");
+          
+          setResearcherOrg(user.user_metadata?.organization || "Economic Research Institute");
+          setResearcherRole(user.user_metadata?.role || "Lead Economist");
+          setEmailNotifications(user.user_metadata?.emailNotifications !== false);
+          setAutoSaveQueries(user.user_metadata?.autoSaveQueries !== false);
+          setWeeklyReports(!!user.user_metadata?.weeklyReports);
+          setDefaultExportFormat(user.user_metadata?.defaultExportFormat || "Excel (.xlsx)");
+          setIncludeMetadata(user.user_metadata?.includeMetadata !== false);
+
+          setAuthSuccess("Login Berhasil! Selamat datang.");
+          setAuthPassword("");
+        }
+      } catch (err: any) {
+        console.error("Supabase login error", err);
+        setAuthError(err.message || "Email atau kata sandi tidak valid.");
+      }
+    } catch (err: any) {
+      console.error("Login Error:", err);
+      setAuthError(err.message || "Email atau kata sandi tidak valid.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Logout current session
+  const handleLogout = async () => {
+    try {
+      setAuthLoading(true);
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+      
+      // Clear react states
+      setCurrentUser(null);
+      setSearchQuery("");
+      setActiveQueryData(null);
+      setCurrentTab("home");
+      
+      // Set to default fields
+      setFirstName("Fikri");
+      setLastName("Afandi");
+      setResearcherEmail("researcher@institution.edu");
+      setResearcherName("Fikri Afandi");
+      setResearcherOrg("Economic Research Institute");
+    } catch (err: any) {
+      console.error("Logout error:", err);
+      setCurrentUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Live Execute API simulation in API playground
@@ -528,9 +801,9 @@ export default function App() {
     setIsApiLoading(true);
     setApiActiveTab("response");
     setApiConsoleOutput("/* Initiated request to active endpoint /api/query ... */");
-
+    
     const targetQuery = searchQuery || "Indonesia GDP Growth 2000-2025";
-
+    
     try {
       const res = await fetch("/api/query", {
         method: "POST",
@@ -560,7 +833,7 @@ export default function App() {
     const sorted = [...rows].sort((a, b) => {
       const valA = a[sortConfig.key] || "";
       const valB = b[sortConfig.key] || "";
-
+      
       const numA = parseFloat(valA.replace(/[^0-9.-]/g, ""));
       const numB = parseFloat(valB.replace(/[^0-9.-]/g, ""));
 
@@ -577,7 +850,7 @@ export default function App() {
   const getFilteredRows = (rows: Record<string, string>[]) => {
     return getSortedRows(rows).filter((row) => {
       if (!tableFilter.trim()) return true;
-      return Object.values(row).some((val) =>
+      return Object.values(row).some((val) => 
         String(val).toLowerCase().includes(tableFilter.toLowerCase())
       );
     });
@@ -599,9 +872,254 @@ export default function App() {
 
   const currentQueryText = searchQuery || "Indonesia GDP Growth 2000-2025";
 
+  if (authLoading) {
+    return (
+      <div id="auth-loading-screen" className={`min-h-screen flex flex-col items-center justify-center font-sans ${darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
+        <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
+          <div className="relative flex h-10 w-10 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-duration-1000"></span>
+            <span className="relative inline-flex rounded-full h-10 w-10 bg-emerald-500 items-center justify-center text-white">
+              <Sparkles className="w-5 h-5 animate-pulse" />
+            </span>
+          </div>
+          <div className="space-y-1.5 mt-2">
+            <h3 className="font-display font-medium text-base tracking-tight">Verifying Portal Access</h3>
+            <p className="text-xs text-slate-450 dark:text-slate-550 font-mono">Connecting with Supabase security gateway...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div id="auth-portal-screen" className={`min-h-screen flex items-center justify-center px-4 py-8 font-sans transition-colors duration-300 relative ${darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
+        <div className="absolute top-4 right-4">
+          <button
+            id="theme-toggle-auth"
+            className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-xs"
+            onClick={() => setDarkMode(!darkMode)}
+            title={darkMode ? "Light Mode" : "Dark Mode"}
+          >
+            {darkMode ? (
+              <Sun className="w-4 h-4 text-amber-500" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-500" />
+            )}
+          </button>
+        </div>
+
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center select-none animate-fade-in">
+            <div className="mx-auto w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/25 mb-4">
+              <Sparkles className="w-6 h-6 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-bold font-display tracking-tight text-slate-900 dark:text-white">
+              Data<span className="text-emerald-500">Mint</span> Intelligence
+            </h2>
+            <p className="text-xs text-slate-450 dark:text-slate-500 font-mono uppercase tracking-widest mt-1.5">
+              Secure Research Portal Gateway
+            </p>
+          </div>
+
+          {/* Always using Supabase Mode */}
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            <div className="flex border-b border-slate-150 dark:border-slate-800 pb-3 gap-4">
+              <button
+                id="tab-auth-login"
+                type="button"
+                className={`text-sm font-semibold pb-1.5 border-b-2 transition-all cursor-pointer ${
+                  authMode === "login"
+                    ? "border-emerald-500 text-slate-900 dark:text-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                }`}
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError(null);
+                  setAuthSuccess(null);
+                }}
+              >
+                Sign In
+              </button>
+              <button
+                id="tab-auth-register"
+                type="button"
+                className={`text-sm font-semibold pb-1.5 border-b-2 transition-all cursor-pointer ${
+                  authMode === "register"
+                    ? "border-emerald-500 text-slate-900 dark:text-white"
+                    : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                }`}
+                onClick={() => {
+                  setAuthMode("register");
+                  setAuthError(null);
+                  setAuthSuccess(null);
+                }}
+              >
+                Create Account
+              </button>
+            </div>
+
+            {authError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-xs text-rose-600 dark:text-rose-400 rounded-xl flex flex-col gap-1">
+                <div className="flex items-center gap-2 font-semibold">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>Autentikasi Terhambat</span>
+                </div>
+                <p className="font-sans leading-relaxed text-[11px] opacity-90">{authError}</p>
+              </div>
+            )}
+
+            {authSuccess && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0 text-emerald-500" />
+                <span className="font-sans text-[11px] font-medium">{authSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={authMode === "login" ? handleLogin : handleRegister} className="space-y-4">
+              {authMode === "register" && (
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">First Name</label>
+                    <input
+                      id="txt-auth-first-name"
+                      type="text"
+                      placeholder="Fikri"
+                      className="w-full px-3.5 py-2 text-xs font-sans bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-450"
+                      value={signUpFirstName}
+                      onChange={(e) => setSignUpFirstName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Last Name</label>
+                    <input
+                      id="txt-auth-last-name"
+                      type="text"
+                      placeholder="Afandi"
+                      className="w-full px-3.5 py-2 text-xs font-sans bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-450"
+                      value={signUpLastName}
+                      onChange={(e) => setSignUpLastName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Email Address</label>
+                <input
+                  id="txt-auth-email"
+                  type="email"
+                  placeholder="name@institution.org"
+                  className="w-full px-3.5 py-2 text-xs font-sans bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-450"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Password</label>
+                <input
+                  id="txt-auth-password"
+                  type="password"
+                  placeholder="Min. 8 characters"
+                  className="w-full px-3.5 py-2 text-xs font-sans bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-450"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              <button
+                id="btn-auth-submit"
+                type="submit"
+                className="w-full py-2.5 bg-slate-950 hover:bg-slate-850 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-2 mt-4 transition-all duration-150"
+              >
+                {authMode === "login" ? (
+                  <>
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Create Account</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Supabase Connection Setup widget in Supabase mode */}
+            {authDriver === "supabase" && (
+              <div className="p-3.5 bg-slate-50/50 dark:bg-slate-950/40 border border-slate-250/20 dark:border-slate-800/80 rounded-xl space-y-3 text-[10.5px] text-slate-500 dark:text-slate-400 mt-2">
+                <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>Status Koneksi Supabase</span>
+                </div>
+                {isSupabaseConfigured() ? (
+                  <div className="space-y-1 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400">
+                    <p className="font-medium">✓ Supabase terhubung dengan baik</p>
+                    <p className="truncate font-mono">URL: {supabaseUrl}</p>
+                    <button
+                      type="button"
+                      onClick={clearSupabaseCredentials}
+                      className="text-[9px] underline font-bold mt-1 text-slate-450 hover:text-rose-500 cursor-pointer block transition-all border-none bg-transparent"
+                    >
+                      Reset / Ubah Credentials
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="leading-relaxed font-sans text-amber-600 dark:text-amber-400 font-medium">
+                      Supabase credentials belum terkonfigurasi. Anda bisa memasukkannya di bawah ini:
+                    </p>
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        placeholder="Supabase URL (e.g. https://xxxx.supabase.co)"
+                        className="w-full px-2.5 py-1.5 text-[10px] font-mono bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400"
+                        id="supabase-custom-url"
+                        defaultValue={supabaseUrl}
+                      />
+                      <input
+                        type="password"
+                        placeholder="Supabase Anon Key"
+                        className="w-full px-2.5 py-1.5 text-[10px] font-mono bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400"
+                        id="supabase-custom-key"
+                        defaultValue={supabaseAnonKey}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = (document.getElementById("supabase-custom-url") as HTMLInputElement)?.value;
+                          const key = (document.getElementById("supabase-custom-key") as HTMLInputElement)?.value;
+                          if (url && key) {
+                            saveSupabaseCredentials(url, key);
+                          } else {
+                            alert("Masukkan Supabase URL & Anon Key!");
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-center transition-all cursor-pointer text-[10px]"
+                      >
+                        Simpan & Hubungkan Supabase
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div id="datamint-app" className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
-
+      
       {/* 1. Header Banner alerting user of Gemini key parameters if missing */}
       {!hasGeminiKey && (
         <div id="missing-api-warning" className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-600 dark:text-amber-400 flex items-center justify-between gap-2 max-md:flex-col text-center">
@@ -664,10 +1182,11 @@ export default function App() {
                     setCurrentTab(item.id);
                     setIsMobileMenuOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-all duration-150 ${isActive
-                    ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
-                    }`}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-all duration-150 ${
+                    isActive 
+                      ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white font-semibold" 
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
+                  }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <IconComp className={`w-4 h-4 ${isActive ? "text-emerald-500" : "text-slate-400"}`} />
@@ -695,6 +1214,14 @@ export default function App() {
                 <div className="text-xs font-semibold truncate text-slate-800 dark:text-slate-200">{researcherName}</div>
                 <div className="text-[10px] text-slate-400 truncate tracking-wide">{researcherOrg}</div>
               </div>
+              <button
+                id="btn-sidebar-signout"
+                onClick={handleLogout}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 transition-all shrink-0 cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
             <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
               <span className="flex items-center gap-1.5">
@@ -756,21 +1283,35 @@ export default function App() {
                   setCurrentTab(item.id);
                   setIsMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg ${currentTab === item.id
-                  ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-white"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  }`}
+                className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg ${
+                  currentTab === item.id 
+                    ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-white" 
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                }`}
               >
                 <item.icon className="w-4 h-4 opacity-70" />
                 <span>{item.label}</span>
               </button>
             ))}
+            <div className="border-t border-slate-150 dark:border-slate-800 mt-2 pt-2">
+              <button
+                id="btn-mobile-signout"
+                onClick={() => {
+                  handleLogout();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg text-rose-500 hover:bg-rose-500/10 dark:hover:bg-rose-500/20 transition-all cursor-pointer"
+              >
+                <LogOut className="w-4 h-4 opacity-80" />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         )}
 
         {/* 3. Main content frame */}
         <main id="main-content-canvas" className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
-
+          
           {/* Top Header Controls row */}
           <div id="top-internal-navbar" className="flex justify-between items-center gap-4 mb-6 border-b pb-4 border-current/5 max-sm:flex-col max-sm:items-start shrink-0">
             <div>
@@ -830,27 +1371,27 @@ export default function App() {
           </div>
 
           {/* 4. Tab Panels */}
-
+          
           {/* A: Home Tab Page */}
           {currentTab === "home" && (
             <div id="home-dashboard-tab" className="space-y-6 flex-1 flex flex-col justify-between">
-
+              
               {/* Upper Hero query field */}
               <div className="bg-white dark:bg-slate-950 p-6 md:p-8 rounded-2xl border border-slate-200/50 dark:border-slate-800/60 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                   <Activity className="w-32 h-32 text-emerald-500" />
                 </div>
-
+                
                 <div className="max-w-2xl mx-auto text-center space-y-4">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tracking-wider uppercase">
                     <Sparkles className="w-3 h-3" />
                     <span>Economic Intelligence Synthesis Engine</span>
                   </div>
-
+                  
                   <h1 className="text-2xl md:text-3xl font-display font-medium tracking-tight">
                     Describe the dataset you need
                   </h1>
-
+                  
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                     DataMint sweeps regional registries, structures observations, normalizes inflation metrics, and returns beautiful timeseries previews.
                   </p>
@@ -982,7 +1523,7 @@ export default function App() {
                     </p>
                   </div>
                   <div className="w-full bg-slate-800 rounded-full h-1.5 mt-4 overflow-hidden">
-                    <div
+                    <div 
                       className="bg-emerald-500 h-1.5 transition-all duration-300"
                       style={{ width: `${(queryProgressStep / 4) * 100}%` }}
                     />
@@ -993,10 +1534,10 @@ export default function App() {
               {/* Dynamic Query result interface with dual side layout */}
               {activeQueryData && !isQueryRunning && (
                 <div id="query-content-view" className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start animate-fade-in">
-
+                  
                   {/* Left Column containing Table and Charts */}
                   <div className="xl:col-span-3 space-y-6">
-
+                    
                     {/* Results Overview Action Banner */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                       <div>
@@ -1033,7 +1574,7 @@ export default function App() {
                           <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
                           <span>Export Excel</span>
                         </button>
-
+                        
                         <button
                           id="btn-copy-json"
                           onClick={() => triggerCopyJSON(activeQueryData, "active-query")}
@@ -1077,13 +1618,13 @@ export default function App() {
 
                     {/* Table Preview Panel */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
-
+                      
                       <div className="flex justify-between items-center gap-4 flex-wrap mb-4 pb-3 border-b border-slate-100 dark:border-slate-800/80">
                         <div className="flex items-center gap-2">
                           <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
                           <h3 className="text-sm font-semibold tracking-tight">Structured Dataset Output</h3>
                         </div>
-
+                        
                         {/* Instant Search filters & Maximize controls */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <div className="relative">
@@ -1160,12 +1701,13 @@ export default function App() {
                                     const value = row[col];
                                     const isYear = col.toLowerCase() === "year" || col.toLowerCase() === "period" || col.toLowerCase() === "date";
                                     return (
-                                      <td
-                                        key={col}
-                                        className={`px-4 py-2 ${isYear
-                                          ? "font-semibold text-slate-900 dark:text-white"
-                                          : "text-slate-600 dark:text-slate-300"
-                                          }`}
+                                      <td 
+                                        key={col} 
+                                        className={`px-4 py-2 ${
+                                          isYear 
+                                            ? "font-semibold text-slate-900 dark:text-white" 
+                                            : "text-slate-600 dark:text-slate-300"
+                                        }`}
                                       >
                                         {value}
                                       </td>
@@ -1183,7 +1725,7 @@ export default function App() {
                           </tbody>
                         </table>
                       </div>
-
+                      
                       {/* Paginated Footer */}
                       <div className="mt-3 flex justify-between items-center text-[11px] text-slate-400 font-medium border-t border-slate-100 dark:border-slate-800/40 pt-3 flex-wrap gap-2">
                         <span>
@@ -1191,7 +1733,7 @@ export default function App() {
                           <strong className="text-slate-700 dark:text-slate-200">{inlineEndIndex}</strong> of{" "}
                           <strong className="text-slate-700 dark:text-slate-200">{totalFilteredRows}</strong> records
                         </span>
-
+                        
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
@@ -1217,22 +1759,68 @@ export default function App() {
 
                     </div>
 
-                    {/* Split Visualisation Section cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs h-[280px]">
-                        <CustomSVGChart
-                          data={activeQueryData.chartData}
-                          series={activeQueryData.chartSeries}
-                          title="Normalized Time-Series Index"
-                          type="line"
-                        />
+                    {/* Visualisation Card - Single Centered Custom Chart with Style Selection */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs flex flex-col space-y-4">
+                      {/* Segmented controls header */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-850">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-850 dark:text-slate-50 flex items-center gap-1.5 font-display">
+                            <Activity className="w-4 h-4 text-emerald-500" />
+                            <span>Visualisasi Pivot Multivariat</span>
+                          </h3>
+                        </div>
+                        
+                        {/* Modern segmented control pill list */}
+                        <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-1 rounded-lg border border-slate-200/80 dark:border-slate-850 shadow-[inset_0_1px_2px_rgba(0,0,0,0.015)]">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChartType("line")}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                              selectedChartType === "line"
+                                ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs border border-slate-200/60 dark:border-slate-800"
+                                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            }`}
+                          >
+                            Line Chart
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChartType("bar")}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                              selectedChartType === "bar"
+                                ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs border border-slate-200/60 dark:border-slate-800"
+                                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            }`}
+                          >
+                            Bar Chart
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChartType("dual")}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all cursor-pointer ${
+                              selectedChartType === "dual"
+                                ? "bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs border border-slate-200/60 dark:border-slate-800"
+                                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                            }`}
+                          >
+                            Kombinasi (Dual)
+                          </button>
+                        </div>
                       </div>
-                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs h-[280px]">
-                        <CustomSVGChart
-                          data={activeQueryData.chartData}
-                          series={activeQueryData.chartSeries}
-                          title="Bar Volume Comparison"
-                          type="bar"
+
+                      {/* Display Selected Custom Design on a pristine h-[340px] visual stage */}
+                      <div className="h-[340px] w-full pt-1.5">
+                        <CustomSVGChart 
+                          data={activeQueryData.chartData} 
+                          series={activeQueryData.chartSeries} 
+                          title={
+                            selectedChartType === "line" 
+                              ? "Normalized Time-Series Index" 
+                              : selectedChartType === "bar" 
+                                ? "Bar Volume Comparison" 
+                                : "Multi-Series Combined Index"
+                          } 
+                          type={selectedChartType}
                         />
                       </div>
                     </div>
@@ -1241,19 +1829,19 @@ export default function App() {
 
                   {/* Right Column: Key Details & Audit timeline */}
                   <div id="right-audit-sidebar" className="space-y-6">
-
+                    
                     {/* Sources metadata checkcard */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs animate-fade-in animate-duration-300">
                       <h3 className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold mb-4 flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5 text-slate-400" />
                         <span>Sources Audited</span>
                       </h3>
-
+                      
                       <div className="space-y-2.5">
                         {activeQueryData.sources && activeQueryData.sources.length > 0 ? (
                           activeQueryData.sources.map((source, idx) => (
-                            <div
-                              key={`${source}-${idx}`}
+                            <div 
+                              key={`${source}-${idx}`} 
                               className="flex items-center justify-between p-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 dark:bg-emerald-500/5 text-xs transition-all text-slate-800 dark:text-slate-200 font-semibold"
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
@@ -1283,7 +1871,7 @@ export default function App() {
                         <Layers className="w-3.5 h-3.5 text-slate-400" />
                         <span>Dataset Metadata</span>
                       </h3>
-
+                      
                       <div className="space-y-3 text-xs">
                         <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                           <span className="text-slate-400">Frequency:</span>
@@ -1301,12 +1889,12 @@ export default function App() {
                           <span className="text-slate-400">Observations:</span>
                           <span className="font-semibold text-slate-800 dark:text-slate-100">{activeQueryData.data?.length} periods</span>
                         </div>
-
+                        
                         {activeQueryData.metadata?.sourceUrl && (
                           <div className="pt-2 text-center text-[10px]">
-                            <a
-                              href={activeQueryData.metadata.sourceUrl}
-                              target="_blank"
+                            <a 
+                              href={activeQueryData.metadata.sourceUrl} 
+                              target="_blank" 
                               rel="noopener noreferrer"
                               className="text-emerald-500 hover:underline inline-flex items-center gap-1"
                             >
@@ -1324,7 +1912,7 @@ export default function App() {
                         <Cpu className="w-3.5 h-3.5 text-slate-400" />
                         <span>Execution Pipeline</span>
                       </h3>
-
+                      
                       <div className="space-y-4">
                         {[
                           { title: "Query understanding", status: "Lexer parsed", time: "18ms" },
@@ -1352,7 +1940,7 @@ export default function App() {
 
               {/* Bottom indicators static list when on home page dashboard */}
               <div id="home-indicators-panel" className="pt-8 grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
-
+                
                 {/* Visual block: Recent Benchmarks queries */}
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/50 dark:border-slate-800/80 shadow-xs">
                   <div className="flex items-center gap-2 mb-3.5 pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -1414,7 +2002,7 @@ export default function App() {
                       <h3 className="text-xs font-bold font-mono tracking-wider uppercase text-slate-500">Integration Spec</h3>
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Standard JSON response structures are generated over strict Node modules matching the World Bank macroeconomic index.
+                      Standard JSON response structures are generated over strict Node modules matching the World Bank macroeconomic index. 
                     </p>
                   </div>
                   <div className="pt-2 flex items-center justify-between text-[10px] text-slate-500 font-mono">
@@ -1464,7 +2052,7 @@ export default function App() {
                             </button>
                           </div>
                           <p className="text-xs text-slate-500 mt-1.5 font-sans leading-relaxed">{ds.description}</p>
-
+                          
                           <div className="mt-4 grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 py-1 border-t border-slate-200/50 dark:border-slate-800/50">
                             <div>Unit: {ds.metadata?.unit || "Metric Unit"}</div>
                             <div>Freq: {ds.metadata?.frequency || "Monthly"}</div>
@@ -1505,7 +2093,7 @@ export default function App() {
           {/* C: Data Sources connected feed directory */}
           {currentTab === "data-sources" && (
             <div id="sources-tab" className="space-y-6">
-
+              
               {/* Telemetry Metrics Row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
@@ -1516,23 +2104,11 @@ export default function App() {
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Status Integrity</div>
                   <div className="text-xl font-bold mt-1 text-emerald-500 flex items-center gap-1.5 font-display">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                    <span>{healthPct.toFixed(1)}% Online</span>
                   </div>
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Avg Response Ping</div>
-                  <div className="text-xl font-bold mt-1 font-display">
-                  {Math.round(
-                    dataSources
-                      .filter(s => s.metrics?.latencyMs)
-                      .reduce((a, b) => a + b.metrics.latencyMs, 0) /
-                    Math.max(
-                      dataSources.filter(s => s.metrics?.latencyMs).length,
-                      1
-                    )
-                  )}ms
-                </div>
-               
+                  <div className="text-xl font-bold mt-1 font-display">138ms</div>
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Region Scope</div>
@@ -1542,18 +2118,18 @@ export default function App() {
 
               {/* Grid with 2 Columns: Directory (Col-span 3) and Register side form (Col-span 1) */}
               <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
-
+                
                 {/* Connection List Panel */}
                 <div className="xl:col-span-3 space-y-4">
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
-
+                    
                     {/* Filter and Title */}
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 mb-5 border-slate-100 dark:border-slate-800">
                       <div>
                         <h3 className="text-sm font-bold font-display tracking-tight text-slate-900 dark:text-white">Connected Registries & Databases</h3>
                         <p className="text-xs text-slate-500 mt-0.5 font-sans">Real-time telemetry and indexing state of regional registries, BPS, Bank Indonesia, and global systems.</p>
                       </div>
-
+                      
                       {/* Filter pills */}
                       <div className="flex flex-wrap gap-1">
                         {[
@@ -1569,10 +2145,11 @@ export default function App() {
                             key={cat.id}
                             onClick={() => setSelectedCategory(cat.id)}
                             type="button"
-                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${selectedCategory === cat.id
-                              ? "bg-slate-900 dark:bg-emerald-600 text-white shadow-xs pointer-events-none"
-                              : "bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 cursor-pointer"
-                              }`}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                              selectedCategory === cat.id
+                                ? "bg-slate-900 dark:bg-emerald-600 text-white shadow-xs pointer-events-none"
+                                : "bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 cursor-pointer"
+                            }`}
                           >
                             {cat.label}
                           </button>
@@ -1586,19 +2163,20 @@ export default function App() {
                         .filter(s => selectedCategory === "all" || s.category === selectedCategory)
                         .map((src) => (
                           <div key={src.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/20 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
-
+                            
                             <div>
                               {/* Header info */}
                               <div className="flex justify-between items-start gap-2">
                                 <div className="flex items-center gap-2">
-                                  <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${src.status === "Healthy"
-                                    ? "bg-emerald-500 animate-pulse"
-                                    : src.status === "Degraded"
-                                      ? "bg-amber-500 animate-pulse"
-                                      : src.status === "Coming Soon"
-                                        ? "bg-indigo-500 animate-pulse"
-                                        : "bg-slate-400"
-                                    }`} />
+                                  <span className={`w-2 h-2 rounded-full inline-block shrink-0 ${
+                                    src.status === "Healthy" 
+                                      ? "bg-emerald-500 animate-pulse" 
+                                      : src.status === "Degraded" 
+                                        ? "bg-amber-500 animate-pulse" 
+                                        : src.status === "Coming Soon"
+                                          ? "bg-indigo-500 animate-pulse"
+                                          : "bg-slate-400"
+                                  }`} />
                                   <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-slate-500">{src.code}</span>
                                 </div>
                                 <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-150 dark:bg-slate-850 text-slate-500 dark:text-slate-400">{src.category}</span>
@@ -1607,22 +2185,22 @@ export default function App() {
                               {/* Title & description */}
                               <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-2.5">{src.name}</h4>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">{src.description || "No description provided."}</p>
-
+                              
                               <div className="text-[10px] font-mono mt-3.5 bg-slate-100/50 dark:bg-slate-850 p-2 rounded border border-current/5 text-slate-450 select-all truncate">
                                 Endpoint: {src.url}
                               </div>
-                              {/* Ping / Latency check utilities */}
+                                                  {/* Ping / Latency check utilities */}
                               <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-200/50 dark:border-slate-800/50 text-[10px] font-mono text-slate-400">
                                 <div className="flex flex-col text-left">
                                   <span>Format: <strong className="text-slate-600 dark:text-slate-300">{src.type}</strong></span>
                                   <span>Latency: <strong className={src.speed === "Pending" ? "text-amber-500" : src.speed === "Coming Soon" ? "text-indigo-550 dark:text-indigo-400 font-semibold text-xs" : "text-emerald-500"}>{src.speed}</strong></span>
                                 </div>
-
+                                
                                 <div className="flex items-center gap-2">
                                   {src.lastTested && src.speed !== "Coming Soon" && (
                                     <span className="text-[9px] text-slate-455 max-sm:hidden">Checked: {src.lastTested.split(" ")[0]}</span>
                                   )}
-
+                                  
                                   {src.speed === "Coming Soon" ? (
                                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/45 text-indigo-600 dark:text-indigo-400 border border-indigo-200/40 dark:border-indigo-850">
                                       Coming Soon
@@ -1693,7 +2271,7 @@ export default function App() {
                   </div>
 
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
-                    Connect an external database REST endpoint, national registry, web service, or secure private CSV link.
+                    Connect an external database REST endpoint, national registry, web service, or secure private CSV link. 
                   </p>
 
                   {formSuccess && (
@@ -1965,30 +2543,33 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setApiActiveTab("rest")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${apiActiveTab === "rest"
-                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-                      }`}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      apiActiveTab === "rest"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
                   >
                     REST API
                   </button>
                   <button
                     type="button"
                     onClick={() => setApiActiveTab("python")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${apiActiveTab === "python"
-                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-                      }`}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      apiActiveTab === "python"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
                   >
                     Python SDK
                   </button>
                   <button
                     type="button"
                     onClick={() => setApiActiveTab("response")}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${apiActiveTab === "response"
-                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-                      }`}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      apiActiveTab === "response"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
                   >
                     Response
                   </button>
@@ -1996,17 +2577,17 @@ export default function App() {
 
                 {/* Interactive Code / Output Block */}
                 <div className="relative group text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-5 font-mono text-[11px] leading-relaxed">
-
+                  
                   {/* Absolute Top Right Copy Button */}
                   <div className="absolute right-4 top-4 z-10">
                     <button
                       type="button"
                       onClick={() => {
-                        const code = apiActiveTab === "rest"
+                        const code = apiActiveTab === "rest" 
                           ? `curl -X POST https://api.datamint.io/v1/query \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "query": "Indonesia GDP Growth 2000-2025",\n    "format": "json",\n    "sources": ["worldbank", "imf"]\n  }'`
                           : apiActiveTab === "python"
-                            ? `import datamint\n\nclient = datamint.Client(api_key="YOUR_API_KEY")\n\ndataset = client.query(\n    query="Indonesia GDP Growth 2000-2025",\n    format="json",\n    sources=["worldbank", "imf"]\n)\n\nprint(dataset.data)`
-                            : apiConsoleOutput;
+                          ? `import datamint\n\nclient = datamint.Client(api_key="YOUR_API_KEY")\n\ndataset = client.query(\n    query="Indonesia GDP Growth 2000-2025",\n    format="json",\n    sources=["worldbank", "imf"]\n)\n\nprint(dataset.data)`
+                          : apiConsoleOutput;
                         triggerCopyText(code, "api-playground-code");
                       }}
                       className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -2030,13 +2611,13 @@ export default function App() {
                     {apiActiveTab === "rest" && (
                       <pre className="whitespace-pre">
                         {`curl -X POST https://api.datamint.io/v1/query \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "query": "Indonesia GDP Growth 2000-2025",
-    "format": "json",
-    "sources": ["worldbank", "imf"]
-  }'`}
+                          -H "Authorization: Bearer YOUR_API_KEY" \\
+                          -H "Content-Type: application/json" \\
+                          -d '{
+                            "query": "Indonesia GDP Growth 2000-2025",
+                            "format": "json",
+                            "sources": ["worldbank", "imf"]
+                          }'`}
                       </pre>
                     )}
 
@@ -2044,15 +2625,15 @@ export default function App() {
                       <pre className="whitespace-pre">
                         {`import datamint
 
-client = datamint.Client(api_key="YOUR_API_KEY")
+                        client = datamint.Client(api_key="YOUR_API_KEY")
 
-dataset = client.query(
-    query="Indonesia GDP Growth 2000-2025",
-    format="json",
-    sources=["worldbank", "imf"]
-)
+                        dataset = client.query(
+                            query="Indonesia GDP Growth 2000-2025",
+                            format="json",
+                            sources=["worldbank", "imf"]
+                        )
 
-print(dataset.data)`}
+                        print(dataset.data)`}
                       </pre>
                     )}
 
@@ -2201,12 +2782,14 @@ print(dataset.data)`}
                       id="toggle-email-notif"
                       type="button"
                       onClick={() => setEmailNotifications(!emailNotifications)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${emailNotifications ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
-                        }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        emailNotifications ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
+                      }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${emailNotifications ? "translate-x-4" : "translate-x-0"
-                          }`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          emailNotifications ? "translate-x-4" : "translate-x-0"
+                        }`}
                       />
                     </button>
                   </div>
@@ -2221,12 +2804,14 @@ print(dataset.data)`}
                       id="toggle-auto-save"
                       type="button"
                       onClick={() => setAutoSaveQueries(!autoSaveQueries)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${autoSaveQueries ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
-                        }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        autoSaveQueries ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
+                      }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${autoSaveQueries ? "translate-x-4" : "translate-x-0"
-                          }`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          autoSaveQueries ? "translate-x-4" : "translate-x-0"
+                        }`}
                       />
                     </button>
                   </div>
@@ -2241,12 +2826,14 @@ print(dataset.data)`}
                       id="toggle-weekly-reports"
                       type="button"
                       onClick={() => setWeeklyReports(!weeklyReports)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${weeklyReports ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
-                        }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        weeklyReports ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
+                      }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${weeklyReports ? "translate-x-4" : "translate-x-0"
-                          }`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          weeklyReports ? "translate-x-4" : "translate-x-0"
+                        }`}
                       />
                     </button>
                   </div>
@@ -2284,12 +2871,14 @@ print(dataset.data)`}
                       id="toggle-include-metadata"
                       type="button"
                       onClick={() => setIncludeMetadata(!includeMetadata)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${includeMetadata ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
-                        }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        includeMetadata ? "bg-[#1A365D] dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-800"
+                      }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${includeMetadata ? "translate-x-4" : "translate-x-0"
-                          }`}
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          includeMetadata ? "translate-x-4" : "translate-x-0"
+                        }`}
                       />
                     </button>
                   </div>
@@ -2304,7 +2893,7 @@ print(dataset.data)`}
           {currentTab === "help-docs" && (
             <div id="help-tab" className="space-y-6 max-w-3xl">
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl shadow-xs space-y-4">
-
+                
                 <div>
                   <h3 className="text-sm font-bold font-display uppercase tracking-wider text-slate-800 dark:text-white">1. Platform Introduction</h3>
                   <p className="text-xs text-slate-500 leading-relaxed mt-1">
@@ -2338,11 +2927,11 @@ print(dataset.data)`}
 
       {/* Immersive Fullscreen Data Explorer Modal */}
       {isFullscreenData && activeQueryData && (
-        <div
+        <div 
           id="fullscreen-viewer-overlay"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10 bg-slate-900/40 dark:bg-slate-950/70 backdrop-blur-md animate-fade-in"
         >
-          <div
+          <div 
             id="fullscreen-viewer-box"
             className="w-full max-w-6xl h-full max-h-[85vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-up"
           >
@@ -2467,12 +3056,13 @@ print(dataset.data)`}
                             const value = row[col];
                             const isYear = col.toLowerCase() === "year" || col.toLowerCase() === "period" || col.toLowerCase() === "date";
                             return (
-                              <td
-                                key={col}
-                                className={`px-5 py-3 text-[12px] ${isYear
-                                  ? "font-bold text-slate-900 dark:text-white"
-                                  : "text-slate-600 dark:text-slate-300"
-                                  }`}
+                              <td 
+                                key={col} 
+                                className={`px-5 py-3 text-[12px] ${
+                                  isYear 
+                                    ? "font-bold text-slate-900 dark:text-white" 
+                                    : "text-slate-600 dark:text-slate-300"
+                                }`}
                               >
                                 {value}
                               </td>

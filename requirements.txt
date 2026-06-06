@@ -8,3 +8,4 @@ wbgapi
 python-dotenv
 lxml
 springernature-api-client
+groq

@@ -542,12 +542,7 @@ app.post("/api/data-sources/:id/test", async (req, res) => {
         response.ok ? "99.9%" : "Unavailable"
     };
 
-    if (
-      response.ok ||
-      response.status === 401 ||
-      response.status === 403 ||
-      response.status === 405
-    ) {
+    if (response.status < 500) {
       source.status = "Healthy";
     } else {
       source.status = "Degraded";
