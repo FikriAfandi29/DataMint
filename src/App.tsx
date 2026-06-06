@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import * as XLSX from "xlsx";
-import { supabase, isSupabaseConfigured, saveSupabaseCredentials, clearSupabaseCredentials, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
+import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
 import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import { 
@@ -56,6 +56,14 @@ export default function App() {
   
   // Dynamic Data Sources states
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const onlineSources = dataSources.filter(
+    s => s.status === "Healthy"
+  ).length;
+
+  const onlinePercentage =
+    dataSources.length > 0
+      ? ((onlineSources / dataSources.length) * 100).toFixed(1)
+      : "0";
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [newSourceName, setNewSourceName] = useState<string>("");
   const [newSourceCode, setNewSourceCode] = useState<string>("");
@@ -432,7 +440,20 @@ export default function App() {
       if (!res.ok) {
         throw new Error(data.error || `Server returned error status ${res.status}`);
       }
+      // Simpan histori query user ke Supabase
+      if (supabase) {
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
 
+        if (user) {
+          await supabase.from("query_history").insert({
+            user_id: user.id,
+            prompt: queryText,
+            response: JSON.stringify(data)
+          });
+        }
+      }
       clearInterval(stepInterval);
       setQueryProgressStep(4);
       
@@ -2044,7 +2065,7 @@ export default function App() {
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Status Integrity</div>
                   <div className="text-xl font-bold mt-1 text-emerald-500 flex items-center gap-1.5 font-display">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                    <span>99.2% Online</span>
+                    <span>{onlinePercentage}% Online</span>
                   </div>
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
