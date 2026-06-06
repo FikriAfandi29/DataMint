@@ -5,7 +5,22 @@ import os
 import json
 from datetime import datetime
 import socket
+from groq import Groq
 
+GEMINI_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-2.5-flash"
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview"
+]
+
+GROQ_MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "deepseek-r1-distill-llama-70b"
+]
 
 def mask(v):
     if not v:
@@ -2025,6 +2040,25 @@ def fetch_bi_data(indicator: str = "exchange_rate"):
     st.session_state.all_dfs.append({"title": title, "df": df})
     return f"Successfully compiled actual Bank Indonesia (BI) data for '{selected}':\n{df.to_string(index=False)}"
 
+def call_groq(prompt, model_name="openai/gpt-oss-120b"):
+
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+
+    completion = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.2,
+        max_completion_tokens=4096
+    )
+
+    return completion.choices[0].message.content
 
 # --- 3. AGENT ENGINE (The Brain of DataMint) ---
 def run_agent_query(user_query: str):
@@ -2091,7 +2125,7 @@ def run_agent_query(user_query: str):
 
     # First turn: Ask the model to execute tools with robust multi-model fallback list
     response = None
-    models_to_try = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview']
+    models_to_try = GEMINI_MODELS
     import traceback
     for model_name in models_to_try:
         try:
@@ -2116,7 +2150,56 @@ def run_agent_query(user_query: str):
                 pass
             
     if response is None:
-        raise RuntimeError("Gagal memanggil model Gemini untuk tahap pertama. Silakan periksa kredensial atau kuota kueri Google Cloud Gemini API Anda.")
+
+        print(
+            "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
+            file=sys.stderr
+        )
+
+        for groq_model in GROQ_MODELS:
+
+            try:
+
+                print(
+                    f"DEBUG: Testing Groq model {groq_model}",
+                    file=sys.stderr
+                )
+
+                groq_text = call_groq(
+                    user_query,
+                    model_name=groq_model
+                )
+
+                return {
+                    "title": "Groq Fallback Response",
+                    "sources": ["Groq"],
+                    "metadata": {
+                        "frequency": "Realtime",
+                        "unit": "Text",
+                        "lastUpdated": str(datetime.now()),
+                        "observations": "1",
+                        "sourceUrl": "https://console.groq.com"
+                    },
+                    "columns": ["Response"],
+                    "data": [
+                        {
+                            "Response": groq_text
+                        }
+                    ],
+                    "chartSeries": [],
+                    "chartData": []
+                }
+
+            except Exception as e:
+
+                print(
+                    f"DEBUG: Groq model gagal {groq_model}: {e}",
+                    file=sys.stderr
+                )
+
+        raise RuntimeError(
+            "Semua model Gemini dan Groq gagal."
+        )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
     print("=== GEMINI RESPONSE ===", file=sys.stderr)
@@ -2291,7 +2374,7 @@ def run_agent_query(user_query: str):
     """
 
     final_structured_response = None
-    for model_name in ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview']:
+    for model_name in GEMINI_MODELS:
         try:
             print(f"DEBUG: Executing Phase 2 with model '{model_name}'", file=sys.stderr)
             final_structured_response = client.models.generate_content(
