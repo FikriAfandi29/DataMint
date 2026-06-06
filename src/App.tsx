@@ -1051,66 +1051,6 @@ export default function App() {
                 )}
               </button>
             </form>
-
-            {/* Supabase Connection Setup widget in Supabase mode */}
-            {authDriver === "supabase" && (
-              <div className="p-3.5 bg-slate-50/50 dark:bg-slate-950/40 border border-slate-250/20 dark:border-slate-800/80 rounded-xl space-y-3 text-[10.5px] text-slate-500 dark:text-slate-400 mt-2">
-                <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>Status Koneksi Supabase</span>
-                </div>
-                {isSupabaseConfigured() ? (
-                  <div className="space-y-1 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400">
-                    <p className="font-medium">✓ Supabase terhubung dengan baik</p>
-                    <p className="truncate font-mono">URL: {supabaseUrl}</p>
-                    <button
-                      type="button"
-                      onClick={clearSupabaseCredentials}
-                      className="text-[9px] underline font-bold mt-1 text-slate-450 hover:text-rose-500 cursor-pointer block transition-all border-none bg-transparent"
-                    >
-                      Reset / Ubah Credentials
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="leading-relaxed font-sans text-amber-600 dark:text-amber-400 font-medium">
-                      Supabase credentials belum terkonfigurasi. Anda bisa memasukkannya di bawah ini:
-                    </p>
-                    <div className="space-y-1.5">
-                      <input
-                        type="text"
-                        placeholder="Supabase URL (e.g. https://xxxx.supabase.co)"
-                        className="w-full px-2.5 py-1.5 text-[10px] font-mono bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400"
-                        id="supabase-custom-url"
-                        defaultValue={supabaseUrl}
-                      />
-                      <input
-                        type="password"
-                        placeholder="Supabase Anon Key"
-                        className="w-full px-2.5 py-1.5 text-[10px] font-mono bg-white dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-100 placeholder-slate-400"
-                        id="supabase-custom-key"
-                        defaultValue={supabaseAnonKey}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = (document.getElementById("supabase-custom-url") as HTMLInputElement)?.value;
-                          const key = (document.getElementById("supabase-custom-key") as HTMLInputElement)?.value;
-                          if (url && key) {
-                            saveSupabaseCredentials(url, key);
-                          } else {
-                            alert("Masukkan Supabase URL & Anon Key!");
-                          }
-                        }}
-                        className="w-full px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-center transition-all cursor-pointer text-[10px]"
-                      >
-                        Simpan & Hubungkan Supabase
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -2104,6 +2044,7 @@ export default function App() {
                   <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">Active Status Integrity</div>
                   <div className="text-xl font-bold mt-1 text-emerald-500 flex items-center gap-1.5 font-display">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                    <span>99.2% Online</span>
                   </div>
                 </div>
                 <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
@@ -2610,30 +2551,30 @@ export default function App() {
                   <div className="overflow-x-auto min-h-[160px] pt-4">
                     {apiActiveTab === "rest" && (
                       <pre className="whitespace-pre">
-                        {`curl -X POST https://api.datamint.io/v1/query \\
-                          -H "Authorization: Bearer YOUR_API_KEY" \\
-                          -H "Content-Type: application/json" \\
-                          -d '{
-                            "query": "Indonesia GDP Growth 2000-2025",
-                            "format": "json",
-                            "sources": ["worldbank", "imf"]
-                          }'`}
+{`curl -X POST https://api.datamint.io/v1/query \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "query": "Indonesia GDP Growth 2000-2025",
+    "format": "json",
+    "sources": ["worldbank", "imf"]
+  }'`}
                       </pre>
                     )}
 
                     {apiActiveTab === "python" && (
                       <pre className="whitespace-pre">
-                        {`import datamint
+{`import datamint
 
-                        client = datamint.Client(api_key="YOUR_API_KEY")
+client = datamint.Client(api_key="YOUR_API_KEY")
 
-                        dataset = client.query(
-                            query="Indonesia GDP Growth 2000-2025",
-                            format="json",
-                            sources=["worldbank", "imf"]
-                        )
+dataset = client.query(
+    query="Indonesia GDP Growth 2000-2025",
+    format="json",
+    sources=["worldbank", "imf"]
+)
 
-                        print(dataset.data)`}
+print(dataset.data)`}
                       </pre>
                     )}
 
