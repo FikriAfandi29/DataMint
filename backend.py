@@ -2077,8 +2077,15 @@ def run_agent_query(user_query: str):
     try:
         client = genai.Client()
         print("DEBUG: Initialized standard GenAI Client.", file=sys.stderr)
+
     except Exception as e:
-        raise RuntimeError(f"Gagal menginisialisasi Google GenAI Client: {str(e)}. Silakan pastikan kredensial atau Application Default Credentials (ADC) terkonfigurasi dengan benar di environment Google Cloud Run.")
+
+        print(
+            f"DEBUG: Gemini initialization failed: {e}",
+            file=sys.stderr
+        )
+
+        client = None
     
     # 1. Clear session memory of extracted dataframes before run
     st.session_state.all_dfs = []
@@ -2127,79 +2134,80 @@ def run_agent_query(user_query: str):
     response = None
     models_to_try = GEMINI_MODELS
     import traceback
-    for model_name in models_to_try:
-        try:
-            print(f"DEBUG: Executing first turn with model '{model_name}'", file=sys.stderr)
-            response = client.models.generate_content(
-                model=model_name,
-                contents=user_query,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    tools=all_tools
-                )
-            )
-            print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
-            break
-        except Exception as e:
-            err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
-            print(err_msg, file=sys.stderr)
+    if client is not None:
+        for model_name in models_to_try:
             try:
-                with open("python_execution.log", "a") as f_log:
-                    f_log.write(f"=== Model {model_name} Error ===\n{err_msg}\n\n")
-            except Exception:
-                pass
-            
-    if response is None:
-
-        print(
-            "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
-            file=sys.stderr
-        )
-
-        for groq_model in GROQ_MODELS:
-
-            try:
-
-                print(
-                    f"DEBUG: Testing Groq model {groq_model}",
-                    file=sys.stderr
+                print(f"DEBUG: Executing first turn with model '{model_name}'", file=sys.stderr)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=user_query,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        tools=all_tools
+                    )
                 )
-
-                groq_text = call_groq(
-                    user_query,
-                    model_name=groq_model
-                )
-
-                return {
-                    "title": "Groq Fallback Response",
-                    "sources": ["Groq"],
-                    "metadata": {
-                        "frequency": "Realtime",
-                        "unit": "Text",
-                        "lastUpdated": str(datetime.now()),
-                        "observations": "1",
-                        "sourceUrl": "https://console.groq.com"
-                    },
-                    "columns": ["Response"],
-                    "data": [
-                        {
-                            "Response": groq_text
-                        }
-                    ],
-                    "chartSeries": [],
-                    "chartData": []
-                }
-
+                print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
+                break
             except Exception as e:
+                err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
+                print(err_msg, file=sys.stderr)
+                try:
+                    with open("python_execution.log", "a") as f_log:
+                        f_log.write(f"=== Model {model_name} Error ===\n{err_msg}\n\n")
+                except Exception:
+                    pass
+                
+        if response is None:
 
-                print(
-                    f"DEBUG: Groq model gagal {groq_model}: {e}",
-                    file=sys.stderr
-                )
+            print(
+                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
+                file=sys.stderr
+            )
 
-        raise RuntimeError(
-            "Semua model Gemini dan Groq gagal."
-        )
+            for groq_model in GROQ_MODELS:
+
+                try:
+
+                    print(
+                        f"DEBUG: Testing Groq model {groq_model}",
+                        file=sys.stderr
+                    )
+
+                    groq_text = call_groq(
+                        user_query,
+                        model_name=groq_model
+                    )
+
+                    return {
+                        "title": "Groq Fallback Response",
+                        "sources": ["Groq"],
+                        "metadata": {
+                            "frequency": "Realtime",
+                            "unit": "Text",
+                            "lastUpdated": str(datetime.now()),
+                            "observations": "1",
+                            "sourceUrl": "https://console.groq.com"
+                        },
+                        "columns": ["Response"],
+                        "data": [
+                            {
+                                "Response": groq_text
+                            }
+                        ],
+                        "chartSeries": [],
+                        "chartData": []
+                    }
+
+                except Exception as e:
+
+                    print(
+                        f"DEBUG: Groq model gagal {groq_model}: {e}",
+                        file=sys.stderr
+                    )
+
+            raise RuntimeError(
+                "Semua model Gemini dan Groq gagal."
+            )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
     print("=== GEMINI RESPONSE ===", file=sys.stderr)
