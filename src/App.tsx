@@ -1286,7 +1286,7 @@ export default function App() {
                   } else if (hour >= 17 || hour < 5) {
                     greeting = "Good evening";
                   }
-                  return `${greeting}, Researcher`;
+                  return `${greeting}, ${lastName || "Researcher"}`;
                 })()}
                 {currentTab === "my-datasets" && "Saved Economic Catalogs"}
                 {currentTab === "data-sources" && "Connected Indices Feed status"}
