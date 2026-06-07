@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./
 import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import LandingPage from "./components/LandingPage";
+import logo from "./components/assets/logo.png";
 import { 
   Search, 
   Database, 
@@ -1201,15 +1202,18 @@ export default function App() {
       <div className="flex-1 flex max-lg:flex-col relative">
 
         {/* 2. Left Navigation Sidebar */}
-        <aside id="sidebar-panel" className={`w-64 border-r max-lg:hidden flex flex-col shrink-0 ${darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
-          <div className="p-5 border-b flex items-center gap-2.5 select-none shrink-0 border-current/10">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
-              <Sparkles className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <span className="font-display font-bold text-lg tracking-tight text-slate-900 dark:text-white">Data<span className="text-emerald-500">Mint</span></span>
-              <div className="text-[9px] font-mono uppercase tracking-widest text-slate-400 font-bold">Research Portal</div>
-            </div>
+        <aside
+          id="sidebar-panel"
+          className={`w-64 border-r max-lg:hidden flex flex-col shrink-0 ${
+            darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+          }`}
+        >
+          <div className="p-5 border-b border-current/10 select-none shrink-0">
+            <img
+              src={logo}
+              alt="DataMint"
+              className="h-10 w-auto"
+            />
           </div>
 
           <div className="p-4 shrink-0">

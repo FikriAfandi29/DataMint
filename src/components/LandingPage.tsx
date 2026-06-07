@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import logo from "./assets/logo.png";
 import { 
   ArrowRight, 
   Sparkles, 
@@ -57,7 +58,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
 
       typingInterval = setInterval(() => {
         if (index < prompt.length) {
-          setTypedText((prev) => prev + prompt[index]);
+          setTypedText((prev) => prev + prompt.charAt(index));
           index++;
         } else {
           clearInterval(typingInterval);
@@ -153,20 +154,15 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
           
           {/* Logo matching the terminal's theme */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-9 h-9 rounded-xl bg-[#128a5e] flex items-center justify-center text-white shadow-lg shadow-[#128a5e]/20">
-              <Database className="w-5 h-5" />
-            </div>
-            <div>
-              <span className={`font-serif italic font-semibold text-2xl tracking-normal ${
-                darkMode ? "text-white" : "text-slate-900"
-              }`}>
-                Data<span className="text-[#128a5e]">Mint</span>
-              </span>
-              <div className={`text-[8px] font-mono uppercase tracking-[0.25em] font-semibold -mt-1 ${
-                darkMode ? "text-[#8e857c]" : "text-slate-500"
-              }`}>
-                INTELLIGENCE TERMINAL
-              </div>
+           <div
+              className="flex items-center cursor-pointer"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            >
+              <img
+                src={logo}
+                alt="DataMint"
+                className="h-12 w-auto"
+              />
             </div>
           </div>
 
