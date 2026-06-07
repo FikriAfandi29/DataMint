@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
 import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
+import LandingPage from "./components/landingpage";
 import { 
   Search, 
   Database, 
@@ -46,6 +47,8 @@ import {
 } from "lucide-react";
 
 export default function App() {
+   // Landing Page toggle state
+  const [showLanding, setShowLanding] = useState<boolean>(true);
   // Navigation tabs state
   const [currentTab, setCurrentTab] = useState<string>("home");
   
@@ -593,7 +596,7 @@ export default function App() {
   };
 
   // Delete saved query
-  const deleteSavedQuery = async (id: string) => {
+ const deleteSavedQuery = async (id: string) => {
     try {
       const res = await fetch(`/api/saved-queries/${id}`, { method: "DELETE" });
       if (res.ok) fetchSavedQueries();
@@ -892,6 +895,20 @@ export default function App() {
   const totalFullscreenPages = Math.ceil(totalFilteredRows / fullscreenLimit) || 1;
 
   const currentQueryText = searchQuery || "Indonesia GDP Growth 2000-2025";
+
+  // Jika pengguna berada dalam sesi landing, tampilkan Landing Page terlebih dahulu
+  if (showLanding) {
+    return (
+      <LandingPage
+        onGetStarted={(mode) => {
+          setAuthMode(mode); // Mengatur mode login atau register secara dinamis
+          setShowLanding(false); // Sembunyikan Landing Page dan beralih ke portal login
+        }}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+    );
+  }
 
   if (authLoading) {
     return (
