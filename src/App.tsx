@@ -44,7 +44,12 @@ import {
   Minimize2,
   LogOut,
   LogIn,
-  UserPlus
+  UserPlus,
+  BookOpen,
+  Video,
+  MessageSquare,
+  FileText,
+  Mail,
 } from "lucide-react";
 
 export default function App() {
@@ -216,6 +221,11 @@ export default function App() {
   const [apiConsoleOutput, setApiConsoleOutput] = useState<string>("{\n  \"status\": \"idle\",\n  \"instructions\": \"Click 'Execute API Request' to synthesize historical indicators.\"\n}");
   const [isApiLoading, setIsApiLoading] = useState<boolean>(false);
   const [apiActiveTab, setApiActiveTab] = useState<"rest" | "python" | "response">("rest");
+
+  // Help hub search state
+  const [docSearchQuery, setDocSearchQuery] = useState<string>("");
+  const [activeHelpArticle, setActiveHelpArticle] = useState<any | null>(null);
+  const [isFullscreenArticle, setIsFullscreenArticle] = useState<boolean>(false);
 
   // Authenticate session on startup
   const checkSession = async () => {
@@ -2960,36 +2970,374 @@ print(dataset.data)`}
             </div>
           )}
 
-          {/* H: Help & Documentation Hub */}
           {currentTab === "help-docs" && (
-            <div id="help-tab" className="space-y-6 max-w-3xl">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl shadow-xs space-y-4">
+            <div id="help-tab" className="space-y-8 w-full max-w-5xl animate-fade-in pb-12">
+              
+              {/* Header */}
+              <div className="space-y-1">
+                <h1 className="text-3xl font-bold font-display tracking-tight text-slate-900 dark:text-white">
+                  Help & Documentation
+                </h1>
+                <p className="text-sm text-slate-500 dark:text-slate-450">
+                  Find answers and learn how to use DataMint effectively
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative max-w-2xl bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 p-1 flex items-center">
+                <div className="pl-3.5 pr-2 flex items-center justify-center text-slate-450 shrink-0">
+                  <Search className="w-4.5 h-4.5" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search documentation..."
+                  className="flex-1 px-2 py-2.5 text-sm bg-transparent border-none text-slate-805 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-0"
+                  value={docSearchQuery}
+                  onChange={(e) => setDocSearchQuery(e.target.value)}
+                />
+                {docSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setDocSearchQuery("")}
+                    className="p-1 px-2 mr-1 text-[10px] font-mono bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white rounded-md transition-all cursor-pointer border-none"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Top Three Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 
-                <div>
-                  <h3 className="text-sm font-bold font-display uppercase tracking-wider text-slate-800 dark:text-white">1. Platform Introduction</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed mt-1">
-                    DataMint is a state-of-the-art SaaS economics console. It aggregates historic indicators, resolves currency conversions, normalizes indices, and structures downloadable Excel spreadsheets (.xlsx).
+                {/* Documentation Card */}
+                <div 
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center hover:shadow-lg dark:hover:shadow-emerald-950/20 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 hover:scale-[1.03] hover:-translate-y-1 transition-all duration-300 flex flex-col items-center group cursor-pointer"
+                  onClick={() => setDocSearchQuery("")}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 flex items-center justify-center text-slate-700 dark:text-slate-300 mb-4 group-hover:scale-105 group-hover:text-emerald-500 group-hover:bg-emerald-500/5 group-hover:border-emerald-500/20 transition-all duration-300">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                    Documentation
+                  </h3>
+                  <p className="text-[11px] text-slate-450 dark:text-slate-500 leading-relaxed mt-1.5 max-w-[200px]">
+                    Comprehensive guides and API reference
                   </p>
                 </div>
 
-                <div className="pt-3 border-t border-slate-200/50 dark:border-slate-800/50">
-                  <h3 className="text-sm font-bold font-display uppercase tracking-wider text-slate-800 dark:text-white">2. Synthesis Capabilities</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed mt-1 font-sans">
-                    With an active <strong>GEMINI_API_KEY</strong>, queries like "US Fed interest rate vs G7 aggregate inflation last 30 years" are parsed utilizing advanced logic definitions to generate complete structured JSON records.
+                {/* Video Tutorials Card */}
+                <div 
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center hover:shadow-lg dark:hover:shadow-emerald-950/20 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 hover:scale-[1.03] hover:-translate-y-1 transition-all duration-300 flex flex-col items-center group cursor-pointer"
+                  onClick={() => setDocSearchQuery("watch")}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 flex items-center justify-center text-slate-700 dark:text-slate-300 mb-4 group-hover:scale-105 group-hover:text-emerald-500 group-hover:bg-emerald-500/5 group-hover:border-emerald-500/20 transition-all duration-300">
+                    <Video className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                    Video Tutorials
+                  </h3>
+                  <p className="text-[11px] text-slate-450 dark:text-slate-550 leading-relaxed mt-1.5 max-w-[200px]">
+                    Step-by-step video guides
                   </p>
                 </div>
 
-                <div className="pt-3 border-t border-slate-200/50 dark:border-slate-800/50">
-                  <h3 className="text-sm font-bold font-display uppercase tracking-wider text-slate-800 dark:text-white">3. Supported Indicators</h3>
-                  <ul className="list-disc pl-5 text-xs text-slate-500 space-y-1">
-                    <li>Gross Domestic Product (GDP) - Growth rate, aggregate output.</li>
-                    <li>Consumer Price Index (CPI) - Inflation, purchasing power rates.</li>
-                    <li>Federal Funds Interest Rates - Policy and bonds markets benchmarks.</li>
-                    <li>Import / Export trade balances - Regional supply volume streams.</li>
-                  </ul>
+                {/* Contact Support Card with direct mail trigger and click-to-copy */}
+                <div 
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center hover:shadow-lg dark:hover:shadow-rose-950/20 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 hover:scale-[1.03] hover:-translate-y-1 transition-all duration-300 flex flex-col items-center group relative cursor-pointer"
+                  onClick={() => {
+                    navigator.clipboard.writeText("afandiahmadfikri@datamintai.tech");
+                    setCopiedId("contact-support-email");
+                    setTimeout(() => setCopiedId(null), 3000);
+                    // trigger mailto in background
+                    window.location.href = "mailto:afandiahmadfikri@datamintai.tech";
+                  }}
+                  title="Click to copy & open email client"
+                >
+                  {copiedId === "contact-support-email" && (
+                    <div className="absolute top-2 right-2 bg-emerald-500 text-white text-[9px] font-mono px-2 py-0.5 rounded-md animate-bounce">
+                      Copied!
+                    </div>
+                  )}
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 flex items-center justify-center text-slate-700 dark:text-slate-300 mb-4 group-hover:scale-105 group-hover:text-emerald-500 group-hover:bg-emerald-500/5 group-hover:border-emerald-500/20 transition-all duration-300">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                    Contact Support
+                  </h3>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono font-medium truncate leading-relaxed mt-1.5 max-w-[220px]">
+                    afandiahmadfikri@datamintai.tech
+                  </p>
                 </div>
 
               </div>
+
+              {/* Grid of Two Columns (Popular Articles & Videos) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                
+                {/* Column 1: Popular Articles */}
+                <div className="bg-white dark:bg-slate-905 border border-slate-250/50 dark:border-slate-800/85 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div className="border-b border-slate-100 dark:border-slate-800/60 pb-3">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white font-display">
+                      Popular Articles
+                    </h2>
+                    <p className="text-[11px] text-slate-450 dark:text-slate-550 mt-0.5">
+                      Most viewed help articles
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    {[
+                      {
+                        title: "Getting Started with DataMint",
+                        category: "Quick Start",
+                        desc: "Welcome to DataMint console! First, navigate to the Home tab and compose your query in natural language (e.g., 'Gross Domestic Product of Indonesia vs inflation rate last decade'). The engine compiles indices, aligns years, resolves commas, and synthesizes download-ready tables in seconds. Use parameters in the search query to focus output precisely."
+                      },
+                      {
+                        title: "Understanding Data Sources",
+                        category: "Data Quality",
+                        desc: "Data sources connect real-time or snapshot portals securely with the platform. Registered endpoints (e.g. IMF, World Bank, regional authorities) must accept headless validated REST requests. To add an indicator, configure variables, test ping latency limits, and secure headers dynamically without CORS blocks."
+                      },
+                      {
+                        title: "Understanding Institutional Data Coverage",
+                        category: "Data Registry",
+                        desc: "Each international and domestic institution hosted on DataMint specializes in a distinct class of macroeconomic & financial research datasets:\n\n" +
+                          "• International Monetary Fund (IMF):\n" +
+                          "Delivers bilateral exchange rates, international reserves, balance of payments (BOP), financial soundness indicators (FSIs), global debt tracking, and sovereign credit/macro-financial vulnerabilities.\n\n" +
+                          "• The World Bank (WB):\n" +
+                          "Hosts broad world development indicators (WDI), structural variables, national poverty levels, micro-development trackers, global educational statistics (EduStats), health registers, and long-term infrastructure indices.\n\n" +
+                          "• Central Banks (e.g., Federal Reserve FRED, Bank Indonesia):\n" +
+                          "Provides regulatory monetary updates, reference interest rates (Fed Funds Rate, BI-Rate), domestic money supply aggregates (M1, M2, M3), composite interest spreads, commercial paper rate charts, and national treasury yield curves.\n\n" +
+                          "• National Statistics Offices (e.g., BPS, USA BLS, Eurostat):\n" +
+                          "Direct sources for localized micro-indicators. Best for monthly Consumer Price Index (CPI), Producer Price Index (PPI), labor market trackers, employment numbers, regional sub-provincial Gross Domestic Product (GDP), and custom export/import ledgers.\n\n" +
+                          "• OECD Database:\n" +
+                          "Aggregates highly normalized indicators for developed economies, containing leading indicators (CLI), tax ratios, composite societal developments, and foreign direct investment registers.\n\n" +
+                          "Choose your source carefully depending on the scale and resolution of your economics model. For global cross-country studies, prioritize WB/IMF. For high-frequency domestic monetary tracking, pair Central Bank inputs with Bureau indices."
+                      },
+                      {
+                        title: "API Integration Guide",
+                        category: "Development",
+                        desc: "With client-side or server-side API integration, fetch raw indicators dynamically with a custom API authorization wrapper. Open the API Playground tab to interact with REST curls or download python configurations. Add custom security headers in the options menu to map JSON parameters seamlessly."
+                      }
+                    ].filter(art => {
+                      if (!docSearchQuery) return true;
+                      const q = docSearchQuery.toLowerCase();
+                      return art.title.toLowerCase().includes(q) || art.category.toLowerCase().includes(q) || art.desc.toLowerCase().includes(q);
+                    }).map((art, idx) => {
+                      return (
+                        <div 
+                          key={idx}
+                          className="p-3.5 bg-slate-50/50 dark:bg-slate-900/60 border border-slate-150 dark:border-slate-850 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 rounded-xl hover:scale-[1.02] hover:-translate-y-0.5 shadow-xs hover:shadow-md hover:bg-white dark:hover:bg-slate-850 transition-all duration-300 cursor-pointer flex items-center justify-between gap-3 group"
+                          onClick={() => {
+                            setActiveHelpArticle(art);
+                            setIsFullscreenArticle(true);
+                          }}
+                          title="Click to read in fullscreen mode"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-emerald-500/20 transition-all duration-300">
+                              <FileText className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs font-semibold text-slate-805 dark:text-slate-205 group-hover:text-emerald-500 transition-colors truncate">
+                                {art.title}
+                              </h4>
+                              <span className="text-[9.5px] font-mono text-slate-400 dark:text-slate-500 font-medium bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                                {art.category}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="text-[10px] text-emerald-500 font-bold group-hover:underline flex items-center gap-1 shrink-0 font-mono">
+                            <span>Read</span>
+                            <Maximize2 className="w-3 h-3" />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Empty State Articles if search mismatch */}
+                    {[
+                      {
+                        title: "Getting Started with DataMint",
+                        category: "Quick Start",
+                        desc: ""
+                      },
+                      {
+                        title: "Understanding Data Sources",
+                        category: "Data Quality",
+                        desc: ""
+                      },
+                      {
+                        title: "Understanding Institutional Data Coverage",
+                        category: "Data Registry",
+                        desc: ""
+                      },
+                      {
+                        title: "API Integration Guide",
+                        category: "Development",
+                        desc: ""
+                      }
+                    ].filter(art => {
+                      if (!docSearchQuery) return true;
+                      const q = docSearchQuery.toLowerCase();
+                      return art.title.toLowerCase().includes(q) || art.category.toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <p className="text-center py-6 text-xs text-slate-400 dark:text-slate-500 font-mono">
+                        No articles match "{docSearchQuery}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Column 2: Video Tutorials */}
+                <div className="bg-white dark:bg-slate-905 border border-slate-250/50 dark:border-slate-800/85 rounded-2xl p-5 shadow-xs space-y-4">
+                  <div className="border-b border-slate-100 dark:border-slate-800/60 pb-3">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white font-display">
+                      Video Tutorials
+                    </h2>
+                    <p className="text-[11px] text-slate-450 dark:text-slate-550 mt-0.5">
+                      Learn with video guides
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    {[
+                      {
+                        title: "Introduction to DataMint Platform",
+                        duration: "5-10 min watch",
+                        videoUrl: "Introducing DataMint Dashboard and Query Builder"
+                      },
+                      {
+                        title: "Advanced Query Techniques",
+                        duration: "5-10 min watch",
+                        videoUrl: "Parsing multi-faceted econometric syntheses with Gemini"
+                      },
+                      {
+                        title: "Working with Large Datasets",
+                        duration: "5-10 min watch",
+                        videoUrl: "Resolving Excel calculations, floating points, and formatting structures"
+                      }
+                    ].filter(vid => {
+                      if (!docSearchQuery) return true;
+                      const q = docSearchQuery.toLowerCase();
+                      return vid.title.toLowerCase().includes(q) || vid.duration.toLowerCase().includes(q);
+                    }).map((vid, idx) => {
+                      const tutorialKey = `tutorial-${idx}`;
+                      const isPlaying = activeQueryData?.id === tutorialKey;
+                      return (
+                        <div 
+                          key={idx}
+                          className="p-3 bg-slate-50/50 dark:bg-slate-900/60 border border-slate-150 dark:border-slate-850 hover:border-emerald-500/30 dark:hover:border-emerald-500/30 hover:scale-[1.02] hover:-translate-y-0.5 shadow-xs hover:shadow-md hover:bg-white dark:hover:bg-slate-850 transition-all duration-300 cursor-pointer group"
+                          onClick={() => {
+                            // use query modal state dynamically for simulating video play trigger to keep UX beautiful!
+                            // we'll pass simulated dataset to trigger video placeholder view in modal
+                            const simulatedVidDataset = {
+                              id: tutorialKey,
+                              title: vid.title,
+                              columns: ["Category", "Overview", "Link"],
+                              data: [
+                                {
+                                  Category: "Video Tutorial",
+                                  Overview: vid.videoUrl,
+                                  Link: "https://datamintai.tech"
+                                }
+                              ],
+                              metadata: {
+                                frequency: "HD Stream 1080p",
+                                unit: "Video Lesson",
+                                observations: "Ready",
+                                sourceUrl: "https://datamintai.tech"
+                              }
+                            };
+                            // open fullscreen preview
+                            setActiveQueryData(simulatedVidDataset as any);
+                            setIsFullscreenData(true);
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-emerald-500/10 transition-transform">
+                              <Video className="w-4.5 h-4.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs font-semibold text-slate-805 dark:text-slate-205 group-hover:text-emerald-500 transition-colors truncate">
+                                {vid.title}
+                              </h4>
+                              <span className="text-[9.5px] font-mono text-slate-400 dark:text-slate-500 font-medium">
+                                {vid.duration}
+                              </span>
+                            </div>
+                            <div className="w-6 h-6 rounded-full bg-slate-200/50 dark:bg-slate-800 flex items-center justify-center shrink-0 text-slate-600 dark:text-slate-400 group-hover:scale-105 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                              <Play className="w-2.5 h-2.5 fill-current" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {[
+                      {
+                        title: "Introduction to DataMint Platform",
+                        duration: "5-10 min watch"
+                      },
+                      {
+                        title: "Advanced Query Techniques",
+                        duration: "5-10 min watch"
+                      },
+                      {
+                        title: "Working with Large Datasets",
+                        duration: "5-10 min watch"
+                      }
+                    ].filter(vid => {
+                      if (!docSearchQuery) return true;
+                      const q = docSearchQuery.toLowerCase();
+                      return vid.title.toLowerCase().includes(q) || vid.duration.toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <p className="text-center py-6 text-xs text-slate-400 dark:text-slate-500 font-mono">
+                        No videos match "{docSearchQuery}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Enhanced Interactive Contact Us section explicitly requested */}
+              <div className="bg-slate-900/5 dark:bg-slate-900/30 border border-slate-200/60 dark:border-slate-800/80 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-5 mt-4">
+                <div className="space-y-1.5 text-center md:text-left">
+                  <div className="flex items-center justify-center md:justify-start gap-2 text-emerald-600 dark:text-emerald-400">
+                    <Mail className="w-4 h-4" />
+                    <span className="text-[11px] font-bold font-mono tracking-wider uppercase">Direct Communication channel</span>
+                  </div>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                    Need Custom Econometric Models?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-450 max-w-lg leading-relaxed">
+                    Our economics team is live to configure bespoke enterprise filters, schedule complex data-source pipelines, and attach tailored indices to your portal.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("afandiahmadfikri@datamintai.tech");
+                      setCopiedId("footer-copy-email");
+                      setTimeout(() => setCopiedId(null), 3000);
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-250 font-semibold text-xs rounded-xl hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-emerald-500 cursor-pointer shadow-xs flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedId === "footer-copy-email" ? "Copied!" : "afandiahmadfikri@datamintai.tech"}</span>
+                  </button>
+                  <a 
+                    href="mailto:afandiahmadfikri@datamintai.tech"
+                    className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer text-center"
+                  >
+                    <span>Contact Us Now</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+
             </div>
           )}
 

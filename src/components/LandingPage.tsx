@@ -85,7 +85,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
                 }, 4000);
               }
             }, 80);
-          }, 1500);
+          }, 2500);
         }
       }, 70);
     };
@@ -269,46 +269,174 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
             </div>
 
             {/* Progress bar simulation for synthesize status */}
+            {/* Progress bar simulation for synthesize status */}
             {isSynthesizing && (
-              <div className={`mb-4 border p-3.5 rounded-xl font-mono text-xs space-y-2 ${
-                darkMode ? "bg-[#110f0e] border-[#2c2621] text-[#c4b9ae]" : "bg-[#fcfbf9] border-[#e2dcd0] text-slate-700"
-              }`}>
-                <div className={`flex justify-between font-bold text-[10px] ${darkMode ? "text-[#faf9f6]" : "text-slate-900"}`}>
-                  <span className="flex items-center gap-1.5">
-                    <RotateCw className="w-3 h-3 animate-spin text-[#128a5e]" />
-                    SWEEPING REGISTRIES (IMF, WORLD BANK)...
-                  </span>
-                  <span>{synthProgress}%</span>
+              <div className="space-y-4">
+                <div className={`border p-3.5 rounded-xl font-mono text-xs space-y-2 ${
+                  darkMode ? "bg-[#110f0e] border-[#2c2621] text-[#c4b9ae]" : "bg-[#fcfbf9] border-[#e2dcd0] text-slate-700"
+                }`}>
+                  <div className={`flex justify-between font-bold text-[10px] ${darkMode ? "text-[#faf9f6]" : "text-slate-900"}`}>
+                    <span className="flex items-center gap-1.5">
+                      <RotateCw className="w-3 h-3 animate-spin text-[#128a5e]" />
+                      SWEEPING REGISTRIES (IMF, WORLD BANK)...
+                    </span>
+                    <span>{synthProgress}%</span>
+                  </div>
+                  <div className={`h-1 rounded-full overflow-hidden ${darkMode ? "bg-[#1a1714]" : "bg-slate-200"}`}>
+                    <div className="h-full bg-[#128a5e] transition-all duration-100 rounded-full" style={{ width: `${synthProgress}%` }} />
+                  </div>
+                  <div className={`text-[9px] flex justify-between ${darkMode ? "text-[#8e857c]" : "text-slate-400"}`}>
+                    <span>Normalizing unit conflicts: (%) as index basis</span>
+                    <span>Processed in { (synthProgress * 0.45).toFixed(1) }s</span>
+                  </div>
                 </div>
-                <div className={`h-1 rounded-full overflow-hidden ${darkMode ? "bg-[#1a1714]" : "bg-slate-200"}`}>
-                  <div className="h-full bg-[#128a5e] transition-all duration-100 rounded-full" style={{ width: `${synthProgress}%` }} />
-                </div>
-                <div className={`text-[9px] flex justify-between ${darkMode ? "text-[#8e857c]" : "text-slate-400"}`}>
-                  <span>Normalizing unit conflicts: (%) as index basis</span>
-                  <span>Processed in { (synthProgress * 0.45).toFixed(1) }s</span>
+
+                {/* Animated Aligned live data output */}
+                <div className={`overflow-hidden border rounded-xl p-4 transition-all duration-500 ${
+                  darkMode ? "bg-[#13110f] border-[#2c2621]/80" : "bg-[#fcfbf9]/60 border-[#e2dcd0]/80"
+                } ${synthProgress > 5 ? "opacity-100 max-h-[400px] translate-y-0" : "opacity-0 max-h-0 translate-y-2"}`}>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    {/* Table Side */}
+                    <div className="md:col-span-7 space-y-2">
+                      <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-wider text-slate-400">
+                        <span>ALIGNED TIME-SERIES</span>
+                        <span className="text-[#128a5e] font-bold">IMF OUTPUT RECORD</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full font-sans text-left border-collapse text-[11px]">
+                          <thead>
+                            <tr className={`border-b text-[9px] font-mono font-bold tracking-wider ${
+                              darkMode ? "border-[#2c2621] text-[#8e857c]" : "border-slate-250 text-slate-400"
+                            }`}>
+                              <th className="pb-1.5 pr-4">YEAR</th>
+                              <th className="pb-1.5 pr-4">GBR</th>
+                              <th className="pb-1.5 pr-4">CHN</th>
+                              <th className="pb-1.5 pr-4">IND</th>
+                              <th className="pb-1.5">USA</th>
+                            </tr>
+                          </thead>
+                          <tbody className={`font-mono divide-y ${
+                            darkMode ? "text-[#faf9f6]/95 divide-[#2c2621]/30" : "text-slate-800 divide-slate-100"
+                          }`}>
+                            {[
+                              { year: "2020", gbr: "0.90%", chn: "2.50%", ind: "6.20%", usa: "1.30%", thresh: 10 },
+                              { year: "2021", gbr: "2.60%", chn: "0.90%", ind: "5.50%", usa: "4.70%", thresh: 25 },
+                              { year: "2022", gbr: "9.10%", chn: "2.00%", ind: "6.60%", usa: "8.00%", thresh: 40 },
+                              { year: "2023", gbr: "7.30%", chn: "0.20%", ind: "5.40%", usa: "4.10%", thresh: 55 },
+                              { year: "2024", gbr: "2.50%", chn: "0.20%", ind: "4.60%", usa: "3.00%", thresh: 70 },
+                              { year: "2025", gbr: "3.40%", chn: "0.00%", ind: "2.10%", usa: "2.70%", thresh: 85 },
+                              { year: "2026", gbr: "3.20%", chn: "1.20%", ind: "4.70%", usa: "3.20%", thresh: 95 },
+                            ].map((row, idx) => {
+                              const visible = synthProgress >= row.thresh;
+                              return (
+                                <tr 
+                                  key={idx} 
+                                  className={`transition-all duration-300 ${
+                                    visible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 pointer-events-none"
+                                  }`}
+                                >
+                                  <td className={`py-1.5 font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>{row.year}</td>
+                                  <td className="py-1.5 text-blue-500">{row.gbr}</td>
+                                  <td className="py-1.5 text-amber-500">{row.chn}</td>
+                                  <td className="py-1.5 text-emerald-500">{row.ind}</td>
+                                  <td className="py-1.5 text-rose-500">{row.usa}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Sparks Mini Chart Side */}
+                    <div className="md:col-span-5 flex flex-col justify-between border-t md:border-t-0 md:border-l pt-3 md:pt-0 md:pl-4 border-slate-200/50 dark:border-slate-850/50">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[10px] font-bold font-sans ${darkMode ? "text-white" : "text-slate-800"}`}>
+                            SPARKLINE GRAPH
+                          </span>
+                          <div className="flex items-center gap-1 font-mono text-[7px] uppercase font-bold text-slate-400">
+                            <span className="flex items-center gap-0.5"><span className="w-1 h-1 rounded-full bg-blue-500" /> GBR</span>
+                            <span className="flex items-center gap-0.5"><span className="w-1 h-1 rounded-full bg-amber-500" /> CHN</span>
+                            <span className="flex items-center gap-0.5"><span className="w-1 h-1 rounded-full bg-emerald-500" /> IND</span>
+                            <span className="flex items-center gap-0.5"><span className="w-1 h-1 rounded-full bg-rose-500" /> USA</span>
+                          </div>
+                        </div>
+
+                        <div className={`h-24 relative border rounded-lg overflow-hidden pt-1.5 transition-colors ${
+                          darkMode ? "bg-[#110f0e] border-[#2c2621]/45" : "bg-slate-100/30 border-slate-200"
+                        }`}>
+                          <div className={`absolute inset-x-0 top-1/4 border-b border-dashed ${darkMode ? "border-[#2c2621]/30" : "border-slate-200/60"}`} />
+                          <div className={`absolute inset-x-0 top-2/4 border-b border-dashed ${darkMode ? "border-[#2c2621]/30" : "border-slate-200/60"}`} />
+                          <div className={`absolute inset-x-0 top-3/4 border-b border-dashed ${darkMode ? "border-[#2c2621]/30" : "border-slate-200/60"}`} />
+
+                          <svg className="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+                            {/* Animated paths based on synthProgress */}
+                            {synthProgress >= 15 && (
+                              <path 
+                                d="M 5 32 L 20 26 L 35 5 L 50 11 L 65 27 L 80 24 L 95 24" 
+                                stroke="#3b82f6" 
+                                strokeWidth="1.2" 
+                                fill="none" 
+                                strokeDasharray="150"
+                                strokeDashoffset={150 - Math.min(150, (synthProgress - 15) * 2.22)}
+                                className="transition-all duration-300"
+                              />
+                            )}
+                            {synthProgress >= 35 && (
+                              <path 
+                                d="M 5 27 L 20 32 L 35 28 L 50 34 L 65 34 L 80 35 L 95 31" 
+                                stroke="#d97706" 
+                                strokeWidth="1.2" 
+                                fill="none" 
+                                strokeDasharray="150"
+                                strokeDashoffset={150 - Math.min(150, (synthProgress - 35) * 2.72)}
+                                className="transition-all duration-300"
+                              />
+                            )}
+                            {synthProgress >= 55 && (
+                              <path 
+                                d="M 5 15 L 20 17 L 35 13 L 50 17 L 65 20 L 80 28 L 95 19" 
+                                stroke="#10b981" 
+                                strokeWidth="1.2" 
+                                fill="none" 
+                                strokeDasharray="150"
+                                strokeDashoffset={150 - Math.min(150, (synthProgress - 55) * 4.28)}
+                                className="transition-all duration-350 animate-pulse"
+                              />
+                            )}
+                            {synthProgress >= 75 && (
+                              <path 
+                                d="M 5 31 L 20 20 L 35 9 L 50 21 L 65 25 L 80 26 L 95 24" 
+                                stroke="#f43f5e" 
+                                strokeWidth="1.2" 
+                                fill="none" 
+                                strokeDasharray="150"
+                                strokeDashoffset={150 - Math.min(150, (synthProgress - 75) * 7.5)}
+                                className="transition-all duration-300"
+                              />
+                            )}
+                          </svg>
+                          
+                          <div className={`absolute bottom-0.5 inset-x-1.5 flex justify-between font-mono text-[7px] ${
+                            darkMode ? "text-[#8e857c]" : "text-slate-400"
+                          }`}>
+                            <span>2020</span>
+                            <span>2026</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-[9px] text-[#128a5e] font-bold mt-1.5">
+                        <Database className="w-3 h-3 animate-pulse" />
+                        <span>SYNTHESIS COMPLETE AND ALIGNED</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
-
-            {/* Suggestions list */}
-            <div className={`flex flex-wrap items-center gap-2 pt-2 border-t text-[11px] ${
-              darkMode ? "border-[#2d2722]/40 text-[#8a7f75]" : "border-slate-100 text-slate-400"
-            }`}>
-              <span className="font-mono uppercase tracking-wider text-[9px]">SUGGESTIONS:</span>
-              {["Indonesia GDP Growth 2000-2025", "ASEAN Inflation Rate", "US Interest Rate History", "China Export Data"].map((sug, i) => (
-                <button
-                  key={i}
-                  onClick={() => setTypedText(sug)}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-colors font-sans cursor-pointer ${
-                    darkMode 
-                      ? "bg-[#1d1916] border-[#2d2722]/50 text-[#c4b9ae] hover:bg-[#25201c] hover:text-[#faf9f6]" 
-                      : "bg-[#f4efe5] border-[#dcd6c9] text-slate-700 hover:bg-[#eae2cf] hover:text-slate-950"
-                  }`}
-                >
-                  {sug}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </section>
@@ -844,7 +972,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
               onClick={() => onGetStarted("register")}
               className="w-full sm:w-auto px-8 py-3.5 bg-[#128a5e] hover:bg-[#159e6c] text-white text-xs font-bold rounded-xl shadow-lg transition-all cursor-pointer border-none flex items-center justify-center gap-2 group"
             >
-              <span>Launch DataMint Sandbox</span>
+              <span>Launch DataMint</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </button>
 
