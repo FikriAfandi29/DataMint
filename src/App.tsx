@@ -1212,7 +1212,7 @@ export default function App() {
             <img
               src={logo}
               alt="DataMint"
-              className="h-10 w-auto"
+              className="h-16 w-auto"
             />
           </div>
 

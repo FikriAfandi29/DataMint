@@ -161,7 +161,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
               <img
                 src={logo}
                 alt="DataMint"
-                className="h-12 w-auto"
+                className="h-16 w-auto"
               />
             </div>
           </div>
