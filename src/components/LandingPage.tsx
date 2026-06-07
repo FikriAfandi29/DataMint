@@ -150,6 +150,10 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
             }` 
           : "py-6 bg-transparent"
       }`}>
+
+         <div className="fixed top-24 left-4 z-[9999] bg-red-500 text-white px-2 py-1 rounded">
+            {String(scrolled)}
+          </div>
         <div className="max-w-7xl mx-auto px-6 sm:px-8 flex items-center justify-between">
           
           {/* Logo matching the terminal's theme */}
