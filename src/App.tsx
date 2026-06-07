@@ -5,6 +5,7 @@ import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import LandingPage from "./components/LandingPage";
 import logo from "./components/assets/logo.png";
+import logo from "./components/assets/loading.png";
 import { 
   Search, 
   Database, 
@@ -966,16 +967,20 @@ export default function App() {
         <div className="flex flex-col items-center gap-6 text-center p-8 max-w-sm w-full">
           <div className="relative flex h-16 w-16 shrink-0 justify-center items-center">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-20"></span>
-            <div className="relative inline-flex rounded-2xl h-14 w-14 bg-[#128a5e] items-center justify-center text-white shadow-xl shadow-[#128a5e]/30">
-              <Database className="w-6 h-6 animate-pulse" />
-            </div>
+            <div className="relative inline-flex items-center justify-center">
+            <img
+              src={loading}
+              alt="DataMint"
+              className="h-16 w-auto"
+            />
+          </div>
           </div>
           <div className="space-y-4 w-full">
             <h3 className="font-serif italic font-semibold text-2xl tracking-normal text-[#128a5e]">Data<span className={darkMode ? "text-white" : "text-slate-900"}>Mint</span></h3>
             
             <div className="space-y-2 col-span-1">
               <p className={`text-xs font-mono font-bold uppercase tracking-wider ${darkMode ? "text-[#8e857c]" : "text-slate-500"}`}>
-                Initializing Sandbox Terminal...
+                Initializing Terminal...
               </p>
               
               {/* Progress bar */}
@@ -1315,11 +1320,12 @@ export default function App() {
 
         {/* Mobile Header Menu bar */}
         <header id="mobile-header" className="lg:hidden flex items-center justify-between p-4 border-b shrink-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-emerald-500 flex items-center justify-center text-white">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <span className="font-display font-bold tracking-tight">DataMint</span>
+          <div className="flex items-center">
+            <img
+              src={logo}
+              alt="DataMint"
+              className="h-14 w-auto"
+            />
           </div>
           <div className="flex items-center gap-2">
             <button
