@@ -41,49 +41,61 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
 
   // Auto typing simulator for hero
   useEffect(() => {
-    const prompt = "Fetch UK, China, India, US inflation projection data from IMF";
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < prompt.length) {
-        setTypedText((prev) => prev + prompt.charAt(index));
-        index++;
-      } else {
-        clearInterval(interval);
-        // Start simulation of synthesizer progress
-        setTimeout(() => {
-          setIsSynthesizing(true);
-          let progress = 0;
-          const progInterval = setInterval(() => {
-            if (progress < 100) {
-              progress += 4;
-              setSynthProgress(progress);
-            } else {
-              clearInterval(progInterval);
-              setTimeout(() => {
-                setIsSynthesizing(false);
-                setSynthProgress(0);
-                setTypedText("");
-              }, 4000); // Wait before repeating
-            }
-          }, 80);
-        }, 1500);
-      }
-    }, 70);
+    let typingInterval: NodeJS.Timeout;
+    let progressInterval: NodeJS.Timeout;
+    let delayTimeout: NodeJS.Timeout;
 
-    return () => clearInterval(interval);
-  }, [synthProgress === 0 && !isSynthesizing]);
+    const runAnimation = () => {
+      const prompt =
+        "Fetch UK, China, India, US inflation projection data from IMF";
 
-  // Handle scroll state for sticky glassmorphism header
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 30) {
-        setScrolled(true);
-      } else {
-        setScrolled(false);
-      }
+      setTypedText("");
+      setSynthProgress(0);
+      setIsSynthesizing(false);
+
+      let index = 0;
+
+      typingInterval = setInterval(() => {
+        if (index < prompt.length) {
+          setTypedText((prev) => prev + prompt[index]);
+          index++;
+        } else {
+          clearInterval(typingInterval);
+
+          delayTimeout = setTimeout(() => {
+            setIsSynthesizing(true);
+
+            let progress = 0;
+
+            progressInterval = setInterval(() => {
+              if (progress < 100) {
+                progress += 4;
+                setSynthProgress(progress);
+              } else {
+                clearInterval(progressInterval);
+
+                delayTimeout = setTimeout(() => {
+                  setIsSynthesizing(false);
+                  setSynthProgress(0);
+                  setTypedText("");
+
+                  // restart animation
+                  runAnimation();
+                }, 4000);
+              }
+            }, 80);
+          }, 1500);
+        }
+      }, 70);
     };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    runAnimation();
+
+    return () => {
+      clearInterval(typingInterval);
+      clearInterval(progressInterval);
+      clearTimeout(delayTimeout);
+    };
   }, []);
 
   const downloadSampleExcel = () => {

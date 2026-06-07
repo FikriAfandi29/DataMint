@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
 import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
-import LandingPage from "./components/landingpage";
+import LandingPage from "./components/LandingPage";
 import { 
   Search, 
   Database, 
@@ -49,6 +49,59 @@ import {
 export default function App() {
    // Landing Page toggle state
   const [showLanding, setShowLanding] = useState<boolean>(true);
+  const [isLaunching, setIsLaunching] = useState<boolean>(false);
+  const [launchProgress, setLaunchProgress] = useState<number>(0);
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+
+      if (
+        hash === "#terminal" ||
+        hash === "#app" ||
+        hash === "#dashboard"
+      ) {
+        setShowLanding(false);
+      } else {
+        setShowLanding(true);
+      }
+    };
+
+    handleHashChange();
+
+    window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handleHashChange);
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("popstate", handleHashChange);
+    };
+  }, []);
+
+  const triggerLaunchTerminal = (mode: "login" | "register") => {
+    setAuthMode(mode);
+    setIsLaunching(true);
+    setLaunchProgress(0);
+
+    let current = 0;
+
+    const interval = setInterval(() => {
+      current += Math.floor(Math.random() * 12) + 6;
+
+      if (current >= 100) {
+        current = 100;
+
+        clearInterval(interval);
+
+        setTimeout(() => {
+          setIsLaunching(false);
+          window.location.hash = "#terminal";
+          setShowLanding(false);
+        }, 200);
+      }
+
+      setLaunchProgress(current);
+    }, 100);
+  };
   // Navigation tabs state
   const [currentTab, setCurrentTab] = useState<string>("home");
   
@@ -896,13 +949,48 @@ export default function App() {
 
   const currentQueryText = searchQuery || "Indonesia GDP Growth 2000-2025";
 
+  if (isLaunching) {
+    return (
+      <div id="terminal-launch-screen" className={`min-h-screen flex flex-col items-center justify-center font-sans transition-colors duration-300 ${darkMode ? "bg-[#110f0e] text-[#faf9f6]/95" : "bg-[#faf9f6] text-slate-800"}`}>
+        <div className="flex flex-col items-center gap-6 text-center p-8 max-w-sm w-full">
+          <div className="relative flex h-16 w-16 shrink-0 justify-center items-center">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-20"></span>
+            <div className="relative inline-flex rounded-2xl h-14 w-14 bg-[#128a5e] items-center justify-center text-white shadow-xl shadow-[#128a5e]/30">
+              <Database className="w-6 h-6 animate-pulse" />
+            </div>
+          </div>
+          <div className="space-y-4 w-full">
+            <h3 className="font-serif italic font-semibold text-2xl tracking-normal text-[#128a5e]">Data<span className={darkMode ? "text-white" : "text-slate-900"}>Mint</span></h3>
+            
+            <div className="space-y-2 col-span-1">
+              <p className={`text-xs font-mono font-bold uppercase tracking-wider ${darkMode ? "text-[#8e857c]" : "text-slate-500"}`}>
+                Initializing Sandbox Terminal...
+              </p>
+              
+              {/* Progress bar */}
+              <div className="w-full bg-slate-200 dark:bg-slate-850 h-1.5 rounded-full overflow-hidden relative">
+                <div 
+                  className="h-full bg-[#128a5e] transition-all duration-150 rounded-full" 
+                  style={{ width: `${launchProgress}%` }}
+                ></div>
+              </div>
+              
+              <div className="flex justify-between font-mono text-[9px] text-[#8e857c]">
+                <span>{launchProgress < 30 ? "Verifying API endpoints..." : launchProgress < 70 ? "Unlocking Supabase gateway..." : "Mounting indicators cache..."}</span>
+                <span>{launchProgress}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   // Jika pengguna berada dalam sesi landing, tampilkan Landing Page terlebih dahulu
   if (showLanding) {
     return (
       <LandingPage
         onGetStarted={(mode) => {
-          setAuthMode(mode); // Mengatur mode login atau register secara dinamis
-          setShowLanding(false); // Sembunyikan Landing Page dan beralih ke portal login
+          triggerLaunchTerminal(mode);
         }}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
