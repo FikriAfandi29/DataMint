@@ -5,7 +5,7 @@ import { CustomSVGChart } from "./components/SVGCharts";
 import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import LandingPage from "./components/LandingPage";
 import logo from "./components/assets/logo.png";
-import logo from "./components/assets/loading.png";
+import loading from "./components/assets/loading.png";
 import { 
   Search, 
   Database, 
@@ -92,7 +92,7 @@ export default function App() {
     let current = 0;
 
     const interval = setInterval(() => {
-      current += Math.floor(Math.random() * 12) + 6;
+      current += Math.floor(Math.random() * 3) + 2;
 
       if (current >= 100) {
         current = 100;
@@ -980,7 +980,7 @@ export default function App() {
             
             <div className="space-y-2 col-span-1">
               <p className={`text-xs font-mono font-bold uppercase tracking-wider ${darkMode ? "text-[#8e857c]" : "text-slate-500"}`}>
-                Initializing Terminal...
+                Initializing Sandbox Terminal...
               </p>
               
               {/* Progress bar */}
@@ -1475,12 +1475,8 @@ export default function App() {
                   </div>
                   
                   <h1 className="text-2xl md:text-3xl font-display font-medium tracking-tight">
-                    Describe the dataset you need
+                    What dataset do you need today, {lastName || "Afandi"}?
                   </h1>
-                  
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                    DataMint sweeps regional registries, structures observations, normalizes inflation metrics, and returns beautiful timeseries previews.
-                  </p>
 
                   {/* High end search bar input */}
                   <form
