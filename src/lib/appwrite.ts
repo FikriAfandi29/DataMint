@@ -10,17 +10,22 @@ export const appwriteFunctions = new Functions(client);
 
 export async function askDataMintAgent(queryText: string) {
     try {
-        const response = await appwriteFunctions.createExecution(
-            '6a292a3f00085c9b8fbd', // Pastikan Function ID ini ada di menu Functions dashboard datamint.appwrite.network lu!
-            JSON.stringify({ query: queryText })
-        );
+        // Langsung nembak ke server Express lokal lu yang port 8080
+        const response = await fetch("/api/query", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query: queryText }),
+        });
 
-        if (response.responseBody) {
-            return JSON.parse(response.responseBody);
+        if (!response.ok) {
+            throw new Error(`Backend local error: ${response.statusText}`);
         }
-        throw new Error("Empty response body");
+
+        return await response.json();
     } catch (error) {
-        console.error("Appwrite Execution Error:", error);
+        console.error("Local Execution Error:", error);
         throw error;
     }
 }

@@ -477,40 +477,57 @@ export default function App() {
   };
 
   // Run Economic dataset synthesis query
-  const executeQuery = async (queryText: string) => {
-    if (!queryText.trim()) return;
-    setSearchQuery(queryText);
+  // Run Economic dataset synthesis query
+  // Run Economic dataset synthesis query
+  // Run Economic dataset synthesis query
+  const executeQuery = async (queryText?: string) => {
+    // 🔥 TRICK MAUT: Cari element input di layar secara paksa berdasarkan placeholder/atributnya!
+    let finalQuery = queryText?.trim();
+    
+    if (!finalQuery) {
+      // 1. Coba cari pakai querySelector ke element input text DataMint lu
+      const inputEl = document.querySelector('input[placeholder*="Describe the dataset"]') as HTMLInputElement;
+      if (inputEl) {
+        finalQuery = inputEl.value?.trim();
+      }
+    }
+    
+    if (!finalQuery && searchQuery) {
+      finalQuery = searchQuery.trim();
+    }
+    
+    console.log("🚀 CHECKPOINT 1 UTAMA: executeQuery dipicu! Teks Kueri:", finalQuery);
+    
+    if (!finalQuery) {
+      console.warn("⚠️ Kueri bener-bener kosong, eksekusi dibatalkan.");
+      return;
+    }
+
+    // Paksa set state biar UI tersinkronisasi sempurna sebelum nembak Appwrite
+    setSearchQuery(finalQuery);
     setIsQueryRunning(true);
     setQueryProgressStep(0);
     setActiveQueryData(null);
-    setWarningMessage(null);
     setQueryError(null);
 
-    // Timed checkpoints for high fidelity Perplexity/Bloomberg interface feeling
     const stepInterval = setInterval(() => {
-      setQueryProgressStep((prev) => {
-        if (prev >= 4) {
-          clearInterval(stepInterval);
-          return 4;
-        }
-        return prev + 1;
-      });
+      setQueryProgressStep((prev) => (prev >= 4 ? 4 : prev + 1));
     }, 900);
 
     try {
-      // 1. Tembak langsung backend Python lu yang active di Appwrite Cloud via SDK service
-      const data = await askDataMintAgent(queryText);
+      console.log("📡 CHECKPOINT 2: Terbang nembak Appwrite Functions Cloud dengan kueri:", finalQuery);
       
-      // 2. Simpan histori kueri user ke database Supabase biar tracking lu tetep jalan
+      // Kirim kueri yang berhasil ketodong tadi ke Appwrite SDK lu
+      const data = await askDataMintAgent(finalQuery);
+      
+      console.log("✅ CHECKPOINT 3: Appwrite Merespons Sukses! Balikan data:", data);
+      
       if (supabase) {
-        const {
-          data: { user }
-        } = await supabase.auth.getUser();
-
+        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase.from("query_history").insert({
             user_id: user.id,
-            prompt: queryText,
+            prompt: finalQuery,
             response: JSON.stringify(data)
           });
         }
@@ -519,24 +536,22 @@ export default function App() {
       clearInterval(stepInterval);
       setQueryProgressStep(4);
       
-      // Delay sedikit biar transisi animasi loading bar terminal lu tetep smooth
       setTimeout(() => {
         setActiveQueryData(data as Dataset);
         setInlinePage(1);
         setFullscreenPage(1);
         if (data.metadata) {
-          // Memicu pencatatan riwayat log unduhan lokal excel
           addDownloadLog(data as Dataset);
         }
         setIsQueryRunning(false);
-        // Otomatis kembalikan tab ke Home untuk me-render visual bento grid & SVG Charts lu
         setCurrentTab("home");
+        console.log("🏁 FINISH: Data ter-render di bento grid!");
       }, 500);
 
     } catch (err: any) {
-      console.error("Failed to fetch synthesized query:", err);
+      console.error("❌ ERROR DI SEKTOR NETWORK/SDK:", err);
       clearInterval(stepInterval);
-      setQueryError(err.message || "Gagal memproses kueri karena kesalahan jaringan atau server.");
+      setQueryError(err.message || "Gagal memproses kueri.");
       setIsQueryRunning(false);
     }
   };
