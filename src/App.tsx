@@ -168,7 +168,7 @@ export default function App() {
     return false;
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
-  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(false);
+  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(true);
   const [obscuredApiKey, setObscuredApiKey] = useState<string>("");
   const [newApiKey, setNewApiKey] = useState<string>("");
   const [savingApiKey, setSavingApiKey] = useState<boolean>(false);
