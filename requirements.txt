@@ -9,3 +9,4 @@ python-dotenv
 lxml
 springernature-api-client
 groq
+appwrite==5.0.1
