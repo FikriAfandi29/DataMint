@@ -2825,16 +2825,49 @@ def generate_smart_fallback_data(query_str):
     }
 
 
-if __name__ == "__main__":
-    # If called as CLI
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "No query provided."}))
-        sys.exit(1)
-        
-    query = sys.argv[1]
+# =====================================================================
+# --- 4. APPWRITE FUNCTIONS ENTRYPOINT WRAPPER ---
+# =====================================================================
+
+def main(context):
+    """
+    Fungsi handler utama yang dipanggil otomatis oleh Appwrite Cloud.
+    """
+    # 1. Ambil data payload request dari React Native / Frontend lu
+    payload_raw = context.req.body
+    query = None
+
+    if payload_raw:
+        try:
+            # Jika frontend mengirimkan format string JSON
+            if isinstance(payload_raw, str):
+                payload_data = json.loads(payload_raw)
+            else:
+                payload_data = payload_raw
+                
+            # Ambil isi query (Misal frontend kirim JSON: { "query": "inflasi indonesia" })
+            query = payload_data.get("query")
+        except Exception as e:
+            # Fallback kalau yang dikirim cuma raw string biasa
+            query = str(payload_raw)
+
+    # 2. Validasi jika parameter query kosong
+    if not query or query.strip() == "":
+        return context.res.json({
+            "error": "No query provided. Silakan kirim data JSON dengan key 'query'."
+        })
+
     try:
-        result = run_agent_query(query)
-        print(json.dumps(result))
+        context.log(f"DataMint Engine Active. Processing query: '{query}'")
+        
+        # 3. Jalankan core engine AI Agent maut milik lu
+        result_dataset = run_agent_query(query)
+        
+        # 4. Lempar balik hasilnya dalam format JSON ke frontend
+        return context.res.json(result_dataset)
+
     except Exception as e:
-        print(json.dumps({"error": f"Gagal mengeksekusi AI Agent: {str(e)}"}), file=sys.stderr)
-        sys.exit(1)
+        context.error(f"Agent execution error: {str(e)}")
+        return context.res.json({
+            "error": f"Gagal mengeksekusi AI Agent DataMint: {str(e)}"
+        })
