@@ -6,6 +6,7 @@ import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import LandingPage from "./components/LandingPage";
 import logo from "./components/assets/logo.png";
 import loading from "./components/assets/loading.png";
+import { askDataMintAgent } from "./lib/appwrite";
 import { 
   Search, 
   Database, 
@@ -497,18 +498,10 @@ export default function App() {
     }, 900);
 
     try {
-      const res = await fetch("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: queryText })
-      });
+      // 1. Tembak langsung backend Python lu yang active di Appwrite Cloud via SDK service
+      const data = await askDataMintAgent(queryText);
       
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || `Server returned error status ${res.status}`);
-      }
-      // Simpan histori query user ke Supabase
+      // 2. Simpan histori kueri user ke database Supabase biar tracking lu tetep jalan
       if (supabase) {
         const {
           data: { user }
@@ -522,20 +515,21 @@ export default function App() {
           });
         }
       }
+      
       clearInterval(stepInterval);
       setQueryProgressStep(4);
       
-      // Delay slightly for presentation smoothness
+      // Delay sedikit biar transisi animasi loading bar terminal lu tetep smooth
       setTimeout(() => {
         setActiveQueryData(data as Dataset);
         setInlinePage(1);
         setFullscreenPage(1);
         if (data.metadata) {
-          // Trigger automatic download log generation in downloads
+          // Memicu pencatatan riwayat log unduhan lokal excel
           addDownloadLog(data as Dataset);
         }
         setIsQueryRunning(false);
-        // Switch tab to home to show the query results
+        // Otomatis kembalikan tab ke Home untuk me-render visual bento grid & SVG Charts lu
         setCurrentTab("home");
       }, 500);
 
