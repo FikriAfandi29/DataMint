@@ -45,18 +45,18 @@
         }
     },
     "sites": [
-        {
-            "$id": "datamint-platform",
-            "name": "DataMint",
-            "path": "dist",
-            "framework": "static",
-            "logging": true,
-            "timeout": 30,
-            "installCommand": "npm install",
-            "buildCommand": "npm run build",
-            "outputDirectory": "dist",
-            "fallbackFile": "index.html"
-        }
+    {
+        "$id": "datamint-platform",
+        "name": "DataMint",
+        "path": "dist",
+        "framework": "static",
+        "logging": true,
+        "timeout": 30,
+        "installCommand": "npm install",
+        "buildCommand": "npm run build",
+        "outputDirectory": "dist",
+        "fallbackFile": "index.html"
+    }
     ],
     "tablesDB": [
         {
