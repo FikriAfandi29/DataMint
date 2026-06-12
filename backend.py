@@ -785,6 +785,14 @@ except ImportError:
 # Load semua variabel rahasia dari file .env
 load_dotenv()
 
+import os
+
+print("==== ENV CHECK ====")
+print("GEMINI =", os.getenv("GEMINI_API_KEY"))
+print("BEA =", os.getenv("BEA_API_KEY"))
+print("FRED =", os.getenv("FRED_API_KEY"))
+print("===================")
+
 # Ambil API Key dari environment variables
 API_KEY = os.getenv("GEMINI_API_KEY")
 print(
