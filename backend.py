@@ -1,4 +1,5 @@
 import sys
+print("BACKEND FILE LOADED")
 import subprocess
 import io
 import os
@@ -90,7 +91,8 @@ def auto_install_packages():
     except Exception:
         pass
 
-auto_install_packages()
+# auto_install_packages()
+print("AUTO INSTALL DISABLED")
 
 # --- DEFINE THE FALLBACK ROBUST MOCK CLASSES ---
 
