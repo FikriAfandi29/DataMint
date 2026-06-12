@@ -2074,6 +2074,7 @@ def call_groq(prompt, model_name="openai/gpt-oss-120b"):
 
 # --- 3. AGENT ENGINE (The Brain of DataMint) ---
 def run_agent_query(user_query: str):
+    print("TRACE 1: run_agent_query start", file=sys.stderr)
     """
     Runs the agent using Google GenAI SDK to automatically call tools and aggregate actual data.
     """
@@ -2146,6 +2147,7 @@ def run_agent_query(user_query: str):
 
     # First turn: Ask the model to execute tools with robust multi-model fallback list
     response = None
+    print("TRACE 2: before Gemini phase 1", file=sys.stderr)
     models_to_try = GEMINI_MODELS
     import traceback
     if client is not None:
@@ -2167,6 +2169,7 @@ def run_agent_query(user_query: str):
                 print("STEP B - sesudah Gemini 1", file=sys.stderr)
 
                 print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
+                print("TRACE 3: Gemini phase 1 done", file=sys.stderr)
                 break
             except Exception as e:
                 err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
@@ -2410,6 +2413,7 @@ def run_agent_query(user_query: str):
     """
 
     final_structured_response = None
+    print("TRACE 4: entering phase 2", file=sys.stderr)
     for model_name in GEMINI_MODELS:
         try:
             print(f"DEBUG: Executing Phase 2 with model '{model_name}'", file=sys.stderr)
@@ -2424,6 +2428,7 @@ def run_agent_query(user_query: str):
             )
             print("STEP D - sesudah Gemini 2", file=sys.stderr)
             print(f"DEBUG: Successfully structured response with model '{model_name}'!", file=sys.stderr)
+            print("TRACE 5: phase 2 done", file=sys.stderr)
             break
         except Exception as e:
             err_msg2 = f"DEBUG: Phase 2 Model '{model_name}' failed: {e}\n{traceback.format_exc()}"
