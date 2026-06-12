@@ -2071,7 +2071,7 @@ def run_agent_query(user_query: str):
     # Dynamic configuration reloading
     from dotenv import load_dotenv
     import os
-    load_dotenv(override=True)
+    load_dotenv()
 
     # Initialize standard client directly as requested by the user
     try:
