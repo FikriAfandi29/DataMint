@@ -787,6 +787,10 @@ load_dotenv()
 
 # Ambil API Key dari environment variables
 API_KEY = os.getenv("GEMINI_API_KEY")
+print(
+    "DEBUG GEMINI EXISTS =",
+    bool(os.getenv("GEMINI_API_KEY"))
+)
 BEA_API_KEY = os.getenv("BEA_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 ELSEVIER_API_KEY = os.getenv("ELSEVIER_API_KEY")
