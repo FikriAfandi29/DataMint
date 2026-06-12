@@ -2880,8 +2880,12 @@ def main(context):
         # 4. Lempar balik hasilnya dalam format JSON ke frontend
         return context.res.json(result_dataset)
 
+    import traceback
+
     except Exception as e:
-        context.error(f"Agent execution error: {str(e)}")
-        return context.res.json({
-            "error": f"Gagal mengeksekusi AI Agent DataMint: {str(e)}"
+        context.error(traceback.format_exc())
+
+        return context.json({
+            "error": str(e),
+            "trace": traceback.format_exc()
         })
