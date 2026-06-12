@@ -2,7 +2,7 @@ import { Client, Functions } from 'appwrite';
 
 const client = new Client()
     // ⚠️ GANTI BARIS INI: Sesuaikan dengan domain host Appwrite lu yang aktif di browser!
-    .setEndpoint('https://datamint.appwrite.network/v1') 
+    .setEndpoint('https://sgp.cloud.appwrite.io/v1') 
     // ⚠️ PASTIKAN PROJECT ID INI BENER: Ambil Project ID yang tertera di dashboard datamint.appwrite.network lu
     .setProject('6a1d855e00147768df88'); 
 
