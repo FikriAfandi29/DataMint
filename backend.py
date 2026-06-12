@@ -2075,7 +2075,9 @@ def run_agent_query(user_query: str):
 
     # Initialize standard client directly as requested by the user
     try:
-        client = genai.Client()
+        client = genai.Client(
+            api_key=os.getenv("GEMINI_API_KEY")
+        )
         print("DEBUG: Initialized standard GenAI Client.", file=sys.stderr)
 
     except Exception as e:
