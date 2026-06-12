@@ -2873,19 +2873,21 @@ def main(context):
 
     try:
         context.log(f"DataMint Engine Active. Processing query: '{query}'")
-        
-        # 3. Jalankan core engine AI Agent maut milik lu
+
+        # 3. Jalankan core engine AI Agent
         result_dataset = run_agent_query(query)
-        
-        # 4. Lempar balik hasilnya dalam format JSON ke frontend
+
+        # 4. Kirim hasil ke frontend
         return context.res.json(result_dataset)
 
-    import traceback
-
     except Exception as e:
-        context.error(traceback.format_exc())
+        import traceback
 
-        return context.json({
+        error_trace = traceback.format_exc()
+
+        context.error(error_trace)
+
+        return context.res.json({
             "error": str(e),
-            "trace": traceback.format_exc()
+            "trace": error_trace
         })
