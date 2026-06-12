@@ -10,22 +10,16 @@ export const appwriteFunctions = new Functions(client);
 
 export async function askDataMintAgent(queryText: string) {
     try {
-        // Langsung nembak ke server Express lokal lu yang port 8080
-        const response = await fetch("/api/query", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ query: queryText }),
-        });
+        const execution = await appwriteFunctions.createExecution(
+            "6a292a3f00085c9b8fbd",
+            JSON.stringify({
+                query: queryText
+            })
+        );
 
-        if (!response.ok) {
-            throw new Error(`Backend local error: ${response.statusText}`);
-        }
-
-        return await response.json();
+        return JSON.parse(execution.responseBody);
     } catch (error) {
-        console.error("Local Execution Error:", error);
+        console.error("Function Execution Error:", error);
         throw error;
     }
 }
