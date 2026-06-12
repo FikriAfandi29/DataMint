@@ -2152,6 +2152,9 @@ def run_agent_query(user_query: str):
         for model_name in models_to_try:
             try:
                 print(f"DEBUG: Executing first turn with model '{model_name}'", file=sys.stderr)
+
+                print("STEP A - sebelum Gemini 1", file=sys.stderr)
+
                 response = client.models.generate_content(
                     model=model_name,
                     contents=user_query,
@@ -2160,6 +2163,9 @@ def run_agent_query(user_query: str):
                         tools=all_tools
                     )
                 )
+
+                print("STEP B - sesudah Gemini 1", file=sys.stderr)
+
                 print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
                 break
             except Exception as e:
@@ -2407,6 +2413,7 @@ def run_agent_query(user_query: str):
     for model_name in GEMINI_MODELS:
         try:
             print(f"DEBUG: Executing Phase 2 with model '{model_name}'", file=sys.stderr)
+            print("STEP C - sebelum Gemini 2", file=sys.stderr)
             final_structured_response = client.models.generate_content(
                 model=model_name,
                 contents=schema_prompt,
@@ -2415,6 +2422,7 @@ def run_agent_query(user_query: str):
                     system_instruction="Generate strictly formatted valid JSON containing correct historical data structures. Do not add any extra greeting, conversational text, or backticks markups."
                 )
             )
+            print("STEP D - sesudah Gemini 2", file=sys.stderr)
             print(f"DEBUG: Successfully structured response with model '{model_name}'!", file=sys.stderr)
             break
         except Exception as e:
