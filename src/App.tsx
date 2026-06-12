@@ -898,20 +898,17 @@ export default function App() {
   const executePlaygroundRequest = async () => {
     setIsApiLoading(true);
     setApiActiveTab("response");
-    setApiConsoleOutput("/* Initiated request to active endpoint /api/query ... */");
-    
+    setApiConsoleOutput("/* Executing Appwrite Function... */");
+
     const targetQuery = searchQuery || "Indonesia GDP Growth 2000-2025";
-    
+
     try {
-      const res = await fetch("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: targetQuery })
-      });
-      const data = await res.json();
+      const data = await askDataMintAgent(targetQuery);
       setApiConsoleOutput(JSON.stringify(data, null, 2));
     } catch (err: any) {
-      setApiConsoleOutput(`// API Integration Exception:\n${err.message || 'Network Timeout'}`);
+      setApiConsoleOutput(
+        `// API Integration Exception:\n${err.message || "Network Timeout"}`
+      );
     } finally {
       setIsApiLoading(false);
     }
