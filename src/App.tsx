@@ -458,9 +458,26 @@ export default function App() {
 
   const fetchSavedQueries = async () => {
     try {
-      const res = await fetch("/api/saved-queries");
-      const data = await res.json();
-      setSavedQueries(data);
+      if (!supabase) return;
+
+      const { data, error } = await supabase
+        .from("query_history")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mappedQueries = (data || []).map((row: any) => ({
+        id: String(row.id),
+        title: row.prompt,
+        description: "Economic research query",
+        timeAgo: new Date(row.created_at).toLocaleDateString(),
+        frequency: "Manual",
+        rawQuery: row.prompt
+      }));
+
+      setSavedQueries(mappedQueries);
+
     } catch (e) {
       console.error("Error loaded saved queries", e);
     }
