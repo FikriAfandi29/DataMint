@@ -667,16 +667,40 @@ export default function App() {
   // Persists synthesized result dataset into custom sets
   const saveDatasetToCatalog = async (dataset: Dataset) => {
     try {
-      const res = await fetch("/api/datasets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataset })
-      });
-      if (res.ok) {
-        setSaveSuccess(true);
-        fetchDatasets();
-        setTimeout(() => setSaveSuccess(false), 3000);
+      if (!supabase) return;
+
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        console.error("User not logged in");
+        return;
       }
+
+      const { error } = await supabase
+        .from("datasets")
+        .insert([
+          {
+            user_id: user.id,
+            title: dataset.title,
+            dataset: dataset
+          }
+        ]);
+
+      if (error) {
+        console.error("INSERT ERROR:", error);
+        return;
+      }
+
+      setSaveSuccess(true);
+
+      fetchDatasets();
+
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+
     } catch (e) {
       console.error("Save error:", e);
     }
