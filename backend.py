@@ -9,17 +9,17 @@ import socket
 from groq import Groq
 
 GEMINI_MODELS = [
-    "gemini-3.5-flash",
     "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
     "gemini-3.1-pro-preview"
 ]
 
 GROQ_MODELS = [
-    "openai/gpt-oss-120b",
-    "qwen/qwen3-32b",
     "openai/gpt-oss-20b",
+    "qwen/qwen3-32b",
     "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
     "deepseek-r1-distill-llama-70b"
 ]
 
@@ -2179,6 +2179,14 @@ def run_agent_query(user_query: str):
             except Exception as e:
                 err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
                 print(err_msg, file=sys.stderr)
+
+                if "429" in str(e):
+                    print(
+                        "DEBUG: Gemini quota exceeded, langsung ke Groq",
+                        file=sys.stderr
+                    )
+                    break
+
                 try:
                     with open("python_execution.log", "a") as f_log:
                         f_log.write(f"=== Model {model_name} Error ===\n{err_msg}\n\n")
@@ -2186,6 +2194,11 @@ def run_agent_query(user_query: str):
                     pass
                 
         if response is None:
+
+            print(
+                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
+                file=sys.stderr
+            )
 
             print(
                 "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
