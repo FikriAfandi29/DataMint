@@ -2196,66 +2196,12 @@ def run_agent_query(user_query: str):
         if response is None:
 
             print(
-                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
+                "DEBUG: Semua model Gemini gagal",
                 file=sys.stderr
             )
-
-            print(
-                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
-                file=sys.stderr
-            )
-
-            for groq_model in GROQ_MODELS:
-
-                try:
-
-                    print(
-                        f"DEBUG: Testing Groq model {groq_model}",
-                        file=sys.stderr
-                    )
-
-                    groq_prompt = f"""
-                    You are DataMint.
-
-                    Return ONLY valid JSON.
-
-                    Schema:
-
-                    {{
-                    "title": "",
-                    "sources": ["Groq"],
-                    "metadata": {{
-                        "frequency": "Annual",
-                        "unit": "",
-                        "lastUpdated": "{datetime.now()}",
-                        "observations": ""
-                    }},
-                    "columns": [],
-                    "data": [],
-                    "chartSeries": [],
-                    "chartData": []
-                    }}
-
-                    User Query:
-                    {user_query}
-                    """
-
-                    groq_text = call_groq(
-                        groq_prompt,
-                        model_name=groq_model
-                    )
-
-                    return json.loads(groq_text)
-
-                except Exception as e:
-
-                    print(
-                        f"DEBUG: Groq model gagal {groq_model}: {e}",
-                        file=sys.stderr
-                    )
 
             raise RuntimeError(
-                "Semua model Gemini dan Groq gagal."
+                "Gemini quota exhausted. Tidak dapat mengambil data ekonomi."
             )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
