@@ -9,17 +9,17 @@ import socket
 from groq import Groq
 
 GEMINI_MODELS = [
+    "gemini-3.5-flash",
     "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
     "gemini-3.1-pro-preview"
 ]
 
 GROQ_MODELS = [
-    "openai/gpt-oss-20b",
-    "qwen/qwen3-32b",
-    "llama-3.3-70b-versatile",
     "openai/gpt-oss-120b",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
     "deepseek-r1-distill-llama-70b"
 ]
 
@@ -2179,14 +2179,6 @@ def run_agent_query(user_query: str):
             except Exception as e:
                 err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
                 print(err_msg, file=sys.stderr)
-
-                if "429" in str(e):
-                    print(
-                        "DEBUG: Gemini quota exceeded, langsung ke Groq",
-                        file=sys.stderr
-                    )
-                    break
-
                 try:
                     with open("python_execution.log", "a") as f_log:
                         f_log.write(f"=== Model {model_name} Error ===\n{err_msg}\n\n")
@@ -2196,12 +2188,61 @@ def run_agent_query(user_query: str):
         if response is None:
 
             print(
-                "DEBUG: Semua model Gemini gagal",
+                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
                 file=sys.stderr
             )
 
+            for groq_model in GROQ_MODELS:
+
+                try:
+
+                    print(
+                        f"DEBUG: Testing Groq model {groq_model}",
+                        file=sys.stderr
+                    )
+
+                    groq_prompt = f"""
+                    You are DataMint.
+
+                    Return ONLY valid JSON.
+
+                    Schema:
+
+                    {{
+                    "title": "",
+                    "sources": ["Groq"],
+                    "metadata": {{
+                        "frequency": "Annual",
+                        "unit": "",
+                        "lastUpdated": "{datetime.now()}",
+                        "observations": ""
+                    }},
+                    "columns": [],
+                    "data": [],
+                    "chartSeries": [],
+                    "chartData": []
+                    }}
+
+                    User Query:
+                    {user_query}
+                    """
+
+                    groq_text = call_groq(
+                        groq_prompt,
+                        model_name=groq_model
+                    )
+
+                    return json.loads(groq_text)
+
+                except Exception as e:
+
+                    print(
+                        f"DEBUG: Groq model gagal {groq_model}: {e}",
+                        file=sys.stderr
+                    )
+
             raise RuntimeError(
-                "Gemini quota exhausted. Tidak dapat mengambil data ekonomi."
+                "Semua model Gemini dan Groq gagal."
             )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
