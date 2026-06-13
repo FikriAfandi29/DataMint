@@ -795,6 +795,9 @@ print("BEA =", os.getenv("BEA_API_KEY"))
 print("FRED =", os.getenv("FRED_API_KEY"))
 print("===================")
 
+print("ALL ENV KEYS:")
+print(list(os.environ.keys())[:20])
+print("HAS GEMINI =", "GEMINI_API_KEY" in os.environ)
 # Ambil API Key dari environment variables
 API_KEY = os.getenv("GEMINI_API_KEY")
 print(
