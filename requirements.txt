@@ -10,3 +10,4 @@ lxml
 springernature-api-client
 groq
 appwrite==5.0.1
+openai>=1.30.0
