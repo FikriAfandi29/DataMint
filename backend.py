@@ -6,21 +6,11 @@ import os
 import json
 from datetime import datetime
 import socket
-from groq import Groq
+from openai import OpenAI
 
 GEMINI_MODELS = [
     "gemini-3.5-flash",
-    "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-pro-preview"
-]
-
-GROQ_MODELS = [
-    "openai/gpt-oss-120b",
-    "qwen/qwen3-32b",
-    "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",
-    "deepseek-r1-distill-llama-70b"
+    "gemini-2.5-flash"
 ]
 
 def mask(v):
@@ -809,6 +799,10 @@ FRED_API_KEY = os.getenv("FRED_API_KEY")
 ELSEVIER_API_KEY = os.getenv("ELSEVIER_API_KEY")
 NASA_API_KEY = os.getenv("NASA_API_KEY")
 BPS_API_KEY = os.getenv("BPS_API_KEY")
+nemotron_client = OpenAI(
+    base_url="https://integrate.api.nvidia.com/v1",
+    api_key=os.getenv("NVIDIA_API_KEY")
+)
 
 # Pengecekan keamanan (Opsional tapi direkomendasikan)
 if not BEA_API_KEY or not FRED_API_KEY:
@@ -2077,6 +2071,27 @@ def call_groq(prompt, model_name="openai/gpt-oss-120b"):
 
     return completion.choices[0].message.content
 
+def call_nemotron(prompt):
+
+    client = OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=os.getenv("NVIDIA_API_KEY")
+    )
+
+    completion = client.chat.completions.create(
+        model="nvidia/nemotron-3-ultra-550b-a55b",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.2,
+        max_tokens=4096
+    )
+
+    return completion.choices[0].message.content
+
 # --- 3. AGENT ENGINE (The Brain of DataMint) ---
 def run_agent_query(user_query: str):
     print("TRACE 1: run_agent_query start", file=sys.stderr)
@@ -2188,62 +2203,75 @@ def run_agent_query(user_query: str):
         if response is None:
 
             print(
-                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
+                "DEBUG: Gemini gagal. Coba Nemotron...",
                 file=sys.stderr
             )
 
-            for groq_model in GROQ_MODELS:
+            try:
 
-                try:
+                nemotron_prompt = f"""
+You are DataMint Router.
 
-                    print(
-                        f"DEBUG: Testing Groq model {groq_model}",
-                        file=sys.stderr
-                    )
+Available tools:
 
-                    groq_prompt = f"""
-                    You are DataMint.
+fetch_stock_data
+fetch_macro_data
+fetch_fred_data
+fetch_news_data
+fetch_imf_data
+fetch_ilo_unemployment_data
+fetch_oecd_data
+fetch_ecb_data
+fetch_sec_cashflow
+fetch_un_comtrade_data
+fetch_bea_nipa_data
+fetch_elsevier_literature
+fetch_adb_macro_data
+fetch_eurostat_macro_data
+fetch_springer_literature
+fetch_nasa_small_body_data
+fetch_bps_data
+fetch_bi_data
 
-                    Return ONLY valid JSON.
+Return ONLY valid JSON.
 
-                    Schema:
+Example:
 
-                    {{
-                    "title": "",
-                    "sources": ["Groq"],
-                    "metadata": {{
-                        "frequency": "Annual",
-                        "unit": "",
-                        "lastUpdated": "{datetime.now()}",
-                        "observations": ""
-                    }},
-                    "columns": [],
-                    "data": [],
-                    "chartSeries": [],
-                    "chartData": []
-                    }}
+{{
+  "tool": "fetch_imf_data",
+  "args": {{
+    "indicator_code": "PCPIPCH",
+    "country_codes": "IDN/MYS"
+  }}
+}}
 
-                    User Query:
-                    {user_query}
-                    """
+User Query:
+{user_query}
+"""
 
-                    groq_text = call_groq(
-                        groq_prompt,
-                        model_name=groq_model
-                    )
+                nemotron_text = call_nemotron(
+                    nemotron_prompt
+                )
 
-                    return json.loads(groq_text)
+                print(
+                    f"DEBUG NEMOTRON: {nemotron_text}",
+                    file=sys.stderr
+                )
 
-                except Exception as e:
+                return json.loads(
+                    nemotron_text
+                )
 
-                    print(
-                        f"DEBUG: Groq model gagal {groq_model}: {e}",
-                        file=sys.stderr
-                    )
+            except Exception as e:
 
-            raise RuntimeError(
-                "Semua model Gemini dan Groq gagal."
-            )
+                print(
+                    f"DEBUG: Nemotron gagal: {e}",
+                    file=sys.stderr
+                )
+
+                raise RuntimeError(
+                    f"Gemini gagal dan Nemotron gagal: {e}"
+                )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
     print("=== GEMINI RESPONSE ===", file=sys.stderr)
@@ -2511,7 +2539,6 @@ def run_agent_query(user_query: str):
             res_json = merge_live_dataframe(res_json, main_df)
 
     return res_json
-
 
 def merge_live_dataframe(res_json, df):
     try:
