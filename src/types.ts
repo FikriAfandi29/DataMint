@@ -25,22 +25,26 @@ export interface Dataset {
   createdDaysAgo?: number;
   rowCount?: number;
   status?: string;
-  sources: string[];
-  metadata: DatasetMetadata;
+  warning?: string;
+
+  sources?: string[];
+  metadata?: DatasetMetadata;
+
   columns: string[];
   data: Record<string, string>[];
-  chartSeries: ChartSeries[];
-  chartData: ChartPoint[];
+
+  chartSeries?: ChartSeries[];
+  chartData?: ChartPoint[];
+
   processingTime?: string;
 }
 
 export interface SavedQuery {
   id: string;
-  title: string;
-  description: string;
-  timeAgo: string;
-  frequency: string;
-  rawQuery: string;
+  user_id: string;
+  prompt: string;
+  response: any;
+  created_at: string;
 }
 
 export interface DownloadItem {

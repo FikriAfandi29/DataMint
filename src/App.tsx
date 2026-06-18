@@ -278,19 +278,24 @@ export default function App() {
     checkSession();
   }, []);
 
-  // Initial Fetching of Saved Datasets and Queries from Backend
   useEffect(() => {
-    fetchDatasets();
-    fetchSavedQueries();
-    fetchDownloads();
     fetchDataSources();
     fetchConfig();
 
-    // Automatically log Supabase configuration state if active
     if (isSupabaseConfigured()) {
       console.log("Supabase is active at:", supabaseUrl);
     }
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    console.log("Loading user data:", currentUser.id);
+
+    fetchDatasets();
+    fetchSavedQueries();
+    fetchDownloads();
+  }, [currentUser]);
 
   const fetchDataSources = async () => {
     try {
@@ -2117,13 +2122,18 @@ export default function App() {
                       <button
                         key={item.id}
                         onClick={() => {
-                          setSearchQuery(item.rawQuery);
-                          executeQuery(item.rawQuery);
+                          setSearchQuery(item.prompt);
+                          executeQuery(item.prompt);
                         }}
                         className="w-full text-left p-2 rounded-lg border border-slate-100 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all flex items-center justify-between text-xs"
                       >
-                        <span className="truncate max-w-[150px] font-medium text-slate-700 dark:text-slate-300 font-sans">{item.title}</span>
-                        <span className="text-[9px] font-mono text-slate-400">{item.timeAgo.replace("Last run ", "")}</span>
+                        <span className="truncate max-w-[150px] font-medium text-slate-700 dark:text-slate-300 font-sans">
+                          {item.prompt}
+                        </span>
+
+                        <span className="text-[9px] font-mono text-slate-400">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -2555,34 +2565,49 @@ export default function App() {
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
                         {savedQueries.map((q) => (
-                          <tr key={q.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 font-sans">
+                          <tr
+                            key={q.id}
+                            className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 font-sans"
+                          >
                             <td className="px-5 py-3">
-                              <div className="font-bold text-slate-900 dark:text-white text-xs">{q.title}</div>
-                              <div className="text-[10px] text-slate-400">{q.description}</div>
+                              <div className="font-bold text-slate-900 dark:text-white text-xs">
+                                Query
+                              </div>
+
+                              <div className="text-[10px] text-slate-400">
+                                {q.created_at}
+                              </div>
                             </td>
-                            <td className="px-5 py-3 font-mono text-[10px] text-slate-600 dark:text-slate-300">"{q.rawQuery}"</td>
+
+                            <td className="px-5 py-3 font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                              "{q.prompt}"
+                            </td>
+
                             <td className="px-5 py-3">
-                              <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                {q.frequency}
-                              </span>
+                              Manual
                             </td>
-                            <td className="px-5 py-3 text-slate-500 text-[11px]">{q.timeAgo}</td>
+
+                            <td className="px-5 py-3 text-slate-500 text-[11px]">
+                              {new Date(q.created_at).toLocaleString()}
+                            </td>
+
                             <td className="px-5 py-3 text-right">
                               <div className="flex justify-end gap-2">
                                 <button
                                   onClick={() => {
-                                    setSearchQuery(q.rawQuery);
-                                    executeQuery(q.rawQuery);
+                                    setSearchQuery(q.prompt);
+                                    executeQuery(q.prompt);
                                   }}
-                                  className="text-xs text-emerald-500 hover:underline font-semibold cursor-pointer"
+                                  className="text-xs text-emerald-500 hover:underline font-semibold"
                                 >
                                   Re-run Query
                                 </button>
+
                                 <span className="text-slate-300">|</span>
+
                                 <button
-                                  id={`delete-query-btn-${q.id}`}
                                   onClick={() => deleteSavedQuery(q.id)}
-                                  className="text-xs text-red-500 hover:underline cursor-pointer"
+                                  className="text-xs text-red-500 hover:underline"
                                 >
                                   Delete
                                 </button>
