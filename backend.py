@@ -1,16 +1,26 @@
 import sys
-print("BACKEND FILE LOADED")
 import subprocess
 import io
 import os
 import json
 from datetime import datetime
 import socket
-from openai import OpenAI
+from supabase import create_client
+from groq import Groq
 
 GEMINI_MODELS = [
     "gemini-3.5-flash",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview"
+]
+
+GROQ_MODELS = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3-32b",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "deepseek-r1-distill-llama-70b"
 ]
 
 def mask(v):
@@ -81,8 +91,7 @@ def auto_install_packages():
     except Exception:
         pass
 
-# auto_install_packages()
-print("AUTO INSTALL DISABLED")
+auto_install_packages()
 
 # --- DEFINE THE FALLBACK ROBUST MOCK CLASSES ---
 
@@ -777,32 +786,15 @@ except ImportError:
 # Load semua variabel rahasia dari file .env
 load_dotenv()
 
-import os
-
-print("==== ENV CHECK ====")
-print("GEMINI =", os.getenv("GEMINI_API_KEY"))
-print("BEA =", os.getenv("BEA_API_KEY"))
-print("FRED =", os.getenv("FRED_API_KEY"))
-print("===================")
-
-print("ALL ENV KEYS:")
-print(list(os.environ.keys())[:20])
-print("HAS GEMINI =", "GEMINI_API_KEY" in os.environ)
 # Ambil API Key dari environment variables
 API_KEY = os.getenv("GEMINI_API_KEY")
-print(
-    "DEBUG GEMINI EXISTS =",
-    bool(os.getenv("GEMINI_API_KEY"))
-)
 BEA_API_KEY = os.getenv("BEA_API_KEY")
 FRED_API_KEY = os.getenv("FRED_API_KEY")
 ELSEVIER_API_KEY = os.getenv("ELSEVIER_API_KEY")
 NASA_API_KEY = os.getenv("NASA_API_KEY")
 BPS_API_KEY = os.getenv("BPS_API_KEY")
-nemotron_client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=os.getenv("NVIDIA_API_KEY")
-)
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("VITE_SUPABASE_ANON_KEY")
 
 # Pengecekan keamanan (Opsional tapi direkomendasikan)
 if not BEA_API_KEY or not FRED_API_KEY:
@@ -1930,91 +1922,71 @@ def fetch_nasa_small_body_data(object_name: str):
     except Exception as e:
         return f"Error fetching NASA JPL data: {str(e)}"
 
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
 
-def fetch_bps_data(indicator: str = "gdp"):
+def fetch_bps_data(
+    indicator: str,
+    region: str = None,
+    start_date: str = None,
+    end_date: str = None
+):
     """
-    Fetches official Indonesian statistics from Badan Pusat Statistik (BPS) Indonesia of national scope.
-    Indicators:
-    - 'gdp': Indonesia GDP Growth and aggregates.
-    - 'inflation': Consumer Price Index (IHK) inflation in Indonesia.
-    - 'unemployment': Indonesia Unemployment Rate (TPT).
-    """
-    BPS_API_KEY = os.getenv("BPS_API_KEY")
-    if not BPS_API_KEY or BPS_API_KEY.strip() == "" or BPS_API_KEY.strip() == "MY_BPS_API_KEY":
-        # Safe fallback containing exact actual official BPS statistical series
-        data_map = {
-            "gdp": [
-                {"Year": "2018", "GDP_Growth_Pct": 5.17, "GDP_Nominal_Trillion_IDR": 14838.3},
-                {"Year": "2019", "GDP_Growth_Pct": 5.02, "GDP_Nominal_Trillion_IDR": 15832.2},
-                {"Year": "2020", "GDP_Growth_Pct": -2.07, "GDP_Nominal_Trillion_IDR": 15443.4},
-                {"Year": "2021", "GDP_Growth_Pct": 3.69, "GDP_Nominal_Trillion_IDR": 16970.8},
-                {"Year": "2022", "GDP_Growth_Pct": 5.31, "GDP_Nominal_Trillion_IDR": 19588.4},
-                {"Year": "2023", "GDP_Growth_Pct": 5.05, "GDP_Nominal_Trillion_IDR": 20892.4},
-                {"Year": "2024", "GDP_Growth_Pct": 5.05, "GDP_Nominal_Trillion_IDR": 22150.2},
-                {"Year": "2025", "GDP_Growth_Pct": 5.10, "GDP_Nominal_Trillion_IDR": 23412.5}
-            ],
-            "inflation": [
-                {"Year": "2018", "Inflation_IHK_Pct": 3.13, "Core_Inflation_Pct": 3.07},
-                {"Year": "2019", "Inflation_IHK_Pct": 2.72, "Core_Inflation_Pct": 3.02},
-                {"Year": "2020", "Inflation_IHK_Pct": 1.68, "Core_Inflation_Pct": 1.60},
-                {"Year": "2021", "Inflation_IHK_Pct": 1.87, "Core_Inflation_Pct": 1.56},
-                {"Year": "2022", "Inflation_IHK_Pct": 5.51, "Core_Inflation_Pct": 3.36},
-                {"Year": "2023", "Inflation_IHK_Pct": 2.61, "Core_Inflation_Pct": 1.80},
-                {"Year": "2024", "Inflation_IHK_Pct": 2.50, "Core_Inflation_Pct": 1.75},
-                {"Year": "2025", "Inflation_IHK_Pct": 2.20, "Core_Inflation_Pct": 1.70}
-            ],
-            "unemployment": [
-                {"Year": "2018", "Unemployment_Rate_TPT_Pct": 5.34},
-                {"Year": "2019", "Unemployment_Rate_TPT_Pct": 5.28},
-                {"Year": "2020", "Unemployment_Rate_TPT_Pct": 7.07},
-                {"Year": "2021", "Unemployment_Rate_TPT_Pct": 6.49},
-                {"Year": "2022", "Unemployment_Rate_TPT_Pct": 5.86},
-                {"Year": "2023", "Unemployment_Rate_TPT_Pct": 5.32},
-                {"Year": "2024", "Unemployment_Rate_TPT_Pct": 4.82},
-                {"Year": "2025", "Unemployment_Rate_TPT_Pct": 4.60}
-            ]
-        }
-        selected = indicator.lower().strip()
-        if selected not in data_map:
-            selected = "gdp"
-        df = pd.DataFrame(data_map[selected])
-        title = f"BPS Indonesia - {selected.upper()}"
-        st.session_state.all_dfs.append({"title": title, "df": df})
-        return f"Fetched actual official BPS Indonesia statistical series for '{selected}'. (Fallback mode active due to missing BPS_API_KEY).\n{df.to_string(index=False)}"
+    Fetches Indonesian economic indicators from DataMint's Supabase database.
 
-    # If key is available, call BPS API
-    url = f"https://webapi.bps.go.id/v1/api/list/model/data/lang/ind/key/{BPS_API_KEY}/"
-    headers = {'User-Agent': 'UniversalAgenticDataMiner afandiahmadfikri@gmail.com'}
+    Examples:
+    - HDI
+    - POVERTY_RATE_TOTAL
+    - GINI_RATIO_TOTAL
+    - MINIMUM_WAGE
+    - BI_RATE
+    - INFLATION
+    - GRDP
+    """
+
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "OK":
-                var_data = data.get("data", [])
-                df = pd.DataFrame(var_data)
-                title = f"BPS Indonesia API - {indicator.upper()}"
-                st.session_state.all_dfs.append({"title": title, "df": df})
-                return f"Successfully fetched live BPS Indonesia API data:\n{df.head(10).to_string(index=False)}"
-        raise RuntimeError(f"BPS API error or status mismatch. Code: {response.status_code}")
-    except Exception as e:
-        # Graceful recursive fallback
-        data_map = {
-            "gdp": [
-                {"Year": "2018", "GDP_Growth_Pct": 5.17, "GDP_Nominal_Trillion_IDR": 14838.3},
-                {"Year": "2019", "GDP_Growth_Pct": 5.02, "GDP_Nominal_Trillion_IDR": 15832.2},
-                {"Year": "2020", "GDP_Growth_Pct": -2.07, "GDP_Nominal_Trillion_IDR": 15443.4},
-                {"Year": "2021", "GDP_Growth_Pct": 3.69, "GDP_Nominal_Trillion_IDR": 16970.8},
-                {"Year": "2022", "GDP_Growth_Pct": 5.31, "GDP_Nominal_Trillion_IDR": 19588.4},
-                {"Year": "2023", "GDP_Growth_Pct": 5.05, "GDP_Nominal_Trillion_IDR": 20892.4},
-                {"Year": "2024", "GDP_Growth_Pct": 5.05, "GDP_Nominal_Trillion_IDR": 22150.2},
-                {"Year": "2025", "GDP_Growth_Pct": 5.10, "GDP_Nominal_Trillion_IDR": 23412.5}
-            ]
-        }
-        df = pd.DataFrame(data_map["gdp"])
-        title = f"BPS Indonesia - GDP fallback"
-        st.session_state.all_dfs.append({"title": title, "df": df})
-        return f"Warning: Failed to fetch from BPS API ({str(e)}). Returned fallback GDP data:\n{df.to_string(index=False)}"
 
+        query = (
+            supabase
+            .table("economic_indicators")
+            .select("*")
+            .eq("indicator", indicator)
+        )
+
+        if region:
+            query = query.eq("region", region)
+
+        if start_date:
+            query = query.gte("date", start_date)
+
+        if end_date:
+            query = query.lte("date", end_date)
+
+        result = query.order("date").execute()
+
+        if not result.data:
+            return f"No data found for indicator={indicator}"
+
+        df = pd.DataFrame(result.data)
+
+        st.session_state.all_dfs.append({
+            "title": f"BPS - {indicator}",
+            "df": df
+        })
+
+        preview = df.tail(10).to_string(index=False)
+
+        return (
+            f"Successfully retrieved {len(df)} rows for "
+            f"{indicator}.\n\n"
+            f"{preview}\n\n"
+            f"Please analyze the trend."
+        )
+
+    except Exception as e:
+        return f"Failed to fetch BPS data. Error: {e}"
 
 def fetch_bi_data(indicator: str = "exchange_rate"):
     """
@@ -2071,30 +2043,8 @@ def call_groq(prompt, model_name="openai/gpt-oss-120b"):
 
     return completion.choices[0].message.content
 
-def call_nemotron(prompt):
-
-    client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=os.getenv("NVIDIA_API_KEY")
-    )
-
-    completion = client.chat.completions.create(
-        model="nvidia/nemotron-3-ultra-550b-a55b",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.2,
-        max_tokens=4096
-    )
-
-    return completion.choices[0].message.content
-
 # --- 3. AGENT ENGINE (The Brain of DataMint) ---
 def run_agent_query(user_query: str):
-    print("TRACE 1: run_agent_query start", file=sys.stderr)
     """
     Runs the agent using Google GenAI SDK to automatically call tools and aggregate actual data.
     """
@@ -2104,13 +2054,11 @@ def run_agent_query(user_query: str):
     # Dynamic configuration reloading
     from dotenv import load_dotenv
     import os
-    load_dotenv()
+    load_dotenv(override=True)
 
     # Initialize standard client directly as requested by the user
     try:
-        client = genai.Client(
-            api_key=os.getenv("GEMINI_API_KEY")
-        )
+        client = genai.Client()
         print("DEBUG: Initialized standard GenAI Client.", file=sys.stderr)
 
     except Exception as e:
@@ -2167,16 +2115,12 @@ def run_agent_query(user_query: str):
 
     # First turn: Ask the model to execute tools with robust multi-model fallback list
     response = None
-    print("TRACE 2: before Gemini phase 1", file=sys.stderr)
     models_to_try = GEMINI_MODELS
     import traceback
     if client is not None:
         for model_name in models_to_try:
             try:
                 print(f"DEBUG: Executing first turn with model '{model_name}'", file=sys.stderr)
-
-                print("STEP A - sebelum Gemini 1", file=sys.stderr)
-
                 response = client.models.generate_content(
                     model=model_name,
                     contents=user_query,
@@ -2185,11 +2129,7 @@ def run_agent_query(user_query: str):
                         tools=all_tools
                     )
                 )
-
-                print("STEP B - sesudah Gemini 1", file=sys.stderr)
-
                 print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
-                print("TRACE 3: Gemini phase 1 done", file=sys.stderr)
                 break
             except Exception as e:
                 err_msg = f"DEBUG: Model '{model_name}' call failed: {e}\n{traceback.format_exc()}"
@@ -2203,75 +2143,62 @@ def run_agent_query(user_query: str):
         if response is None:
 
             print(
-                "DEBUG: Gemini gagal. Coba Nemotron...",
+                "DEBUG: Semua model Gemini gagal. Mencoba fallback Groq...",
                 file=sys.stderr
             )
 
-            try:
+            for groq_model in GROQ_MODELS:
 
-                nemotron_prompt = f"""
-You are DataMint Router.
+                try:
 
-Available tools:
+                    print(
+                        f"DEBUG: Testing Groq model {groq_model}",
+                        file=sys.stderr
+                    )
 
-fetch_stock_data
-fetch_macro_data
-fetch_fred_data
-fetch_news_data
-fetch_imf_data
-fetch_ilo_unemployment_data
-fetch_oecd_data
-fetch_ecb_data
-fetch_sec_cashflow
-fetch_un_comtrade_data
-fetch_bea_nipa_data
-fetch_elsevier_literature
-fetch_adb_macro_data
-fetch_eurostat_macro_data
-fetch_springer_literature
-fetch_nasa_small_body_data
-fetch_bps_data
-fetch_bi_data
+                    groq_prompt = f"""
+                    You are DataMint.
 
-Return ONLY valid JSON.
+                    Return ONLY valid JSON.
 
-Example:
+                    Schema:
 
-{{
-  "tool": "fetch_imf_data",
-  "args": {{
-    "indicator_code": "PCPIPCH",
-    "country_codes": "IDN/MYS"
-  }}
-}}
+                    {{
+                    "title": "",
+                    "sources": ["Groq"],
+                    "metadata": {{
+                        "frequency": "Annual",
+                        "unit": "",
+                        "lastUpdated": "{datetime.now()}",
+                        "observations": ""
+                    }},
+                    "columns": [],
+                    "data": [],
+                    "chartSeries": [],
+                    "chartData": []
+                    }}
 
-User Query:
-{user_query}
-"""
+                    User Query:
+                    {user_query}
+                    """
 
-                nemotron_text = call_nemotron(
-                    nemotron_prompt
-                )
+                    groq_text = call_groq(
+                        groq_prompt,
+                        model_name=groq_model
+                    )
 
-                print(
-                    f"DEBUG NEMOTRON: {nemotron_text}",
-                    file=sys.stderr
-                )
+                    return json.loads(groq_text)
 
-                return json.loads(
-                    nemotron_text
-                )
+                except Exception as e:
 
-            except Exception as e:
+                    print(
+                        f"DEBUG: Groq model gagal {groq_model}: {e}",
+                        file=sys.stderr
+                    )
 
-                print(
-                    f"DEBUG: Nemotron gagal: {e}",
-                    file=sys.stderr
-                )
-
-                raise RuntimeError(
-                    f"Gemini gagal dan Nemotron gagal: {e}"
-                )
+            raise RuntimeError(
+                "Semua model Gemini dan Groq gagal."
+            )
 
     # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
     print("=== GEMINI RESPONSE ===", file=sys.stderr)
@@ -2446,11 +2373,9 @@ User Query:
     """
 
     final_structured_response = None
-    print("TRACE 4: entering phase 2", file=sys.stderr)
     for model_name in GEMINI_MODELS:
         try:
             print(f"DEBUG: Executing Phase 2 with model '{model_name}'", file=sys.stderr)
-            print("STEP C - sebelum Gemini 2", file=sys.stderr)
             final_structured_response = client.models.generate_content(
                 model=model_name,
                 contents=schema_prompt,
@@ -2459,9 +2384,7 @@ User Query:
                     system_instruction="Generate strictly formatted valid JSON containing correct historical data structures. Do not add any extra greeting, conversational text, or backticks markups."
                 )
             )
-            print("STEP D - sesudah Gemini 2", file=sys.stderr)
             print(f"DEBUG: Successfully structured response with model '{model_name}'!", file=sys.stderr)
-            print("TRACE 5: phase 2 done", file=sys.stderr)
             break
         except Exception as e:
             err_msg2 = f"DEBUG: Phase 2 Model '{model_name}' failed: {e}\n{traceback.format_exc()}"
@@ -2539,6 +2462,7 @@ User Query:
             res_json = merge_live_dataframe(res_json, main_df)
 
     return res_json
+
 
 def merge_live_dataframe(res_json, df):
     try:
@@ -2884,55 +2808,16 @@ def generate_smart_fallback_data(query_str):
     }
 
 
-# =====================================================================
-# --- 4. APPWRITE FUNCTIONS ENTRYPOINT WRAPPER ---
-# =====================================================================
-
-def main(context):
-    """
-    Fungsi handler utama yang dipanggil otomatis oleh Appwrite Cloud.
-    """
-    # 1. Ambil data payload request dari React Native / Frontend lu
-    payload_raw = context.req.body
-    query = None
-
-    if payload_raw:
-        try:
-            # Jika frontend mengirimkan format string JSON
-            if isinstance(payload_raw, str):
-                payload_data = json.loads(payload_raw)
-            else:
-                payload_data = payload_raw
-                
-            # Ambil isi query (Misal frontend kirim JSON: { "query": "inflasi indonesia" })
-            query = payload_data.get("query")
-        except Exception as e:
-            # Fallback kalau yang dikirim cuma raw string biasa
-            query = str(payload_raw)
-
-    # 2. Validasi jika parameter query kosong
-    if not query or query.strip() == "":
-        return context.res.json({
-            "error": "No query provided. Silakan kirim data JSON dengan key 'query'."
-        })
-
+if __name__ == "__main__":
+    # If called as CLI
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "No query provided."}))
+        sys.exit(1)
+        
+    query = sys.argv[1]
     try:
-        context.log(f"DataMint Engine Active. Processing query: '{query}'")
-
-        # 3. Jalankan core engine AI Agent
-        result_dataset = run_agent_query(query)
-
-        # 4. Kirim hasil ke frontend
-        return context.res.json(result_dataset)
-
+        result = run_agent_query(query)
+        print(json.dumps(result))
     except Exception as e:
-        import traceback
-
-        error_trace = traceback.format_exc()
-
-        context.error(error_trace)
-
-        return context.res.json({
-            "error": str(e),
-            "trace": error_trace
-        })
+        print(json.dumps({"error": f"Gagal mengeksekusi AI Agent: {str(e)}"}), file=sys.stderr)
+        sys.exit(1)

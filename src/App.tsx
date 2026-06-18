@@ -6,7 +6,6 @@ import { Dataset, SavedQuery, DownloadItem, DataSource } from "./types";
 import LandingPage from "./components/LandingPage";
 import logo from "./components/assets/logo.png";
 import loading from "./components/assets/loading.png";
-import { askDataMintAgent } from "./lib/appwrite";
 import { 
   Search, 
   Database, 
@@ -168,7 +167,7 @@ export default function App() {
     return false;
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
-  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(true);
+  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(false);
   const [obscuredApiKey, setObscuredApiKey] = useState<string>("");
   const [newApiKey, setNewApiKey] = useState<string>("");
   const [savingApiKey, setSavingApiKey] = useState<boolean>(false);
@@ -448,147 +447,126 @@ export default function App() {
 
   const fetchDatasets = async () => {
     try {
-      if (!supabase) return;
-
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
+      if (!supabase || !currentUser) return;
 
       const { data, error } = await supabase
         .from("datasets")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", currentUser.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const mappedDatasets = (data || []).map((row: any) => ({
-        id: String(row.id),
-        ...row.dataset
-      }));
-
-      setDatasets(mappedDatasets);
-
+      setDatasets(data || []);
     } catch (e) {
-      console.error("Error loaded datasets", e);
+      console.error("Error loading datasets", e);
     }
   };
 
   const fetchSavedQueries = async () => {
     try {
-      if (!supabase) return;
+      if (!supabase || !currentUser) return;
 
       const { data, error } = await supabase
         .from("query_history")
         .select("*")
+        .eq("user_id", currentUser.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      const mappedQueries = (data || []).map((row: any) => ({
-        id: String(row.id),
-        title: row.prompt,
-        description: "Economic research query",
-        timeAgo: new Date(row.created_at).toLocaleDateString(),
-        frequency: "Manual",
-        rawQuery: row.prompt
-      }));
-
-      setSavedQueries(mappedQueries);
-
+      setSavedQueries(data || []);
     } catch (e) {
-      console.error("Error loaded saved queries", e);
+      console.error("Error loading saved queries", e);
     }
   };
 
   const fetchDownloads = async () => {
     try {
-      const res = await fetch("/api/downloads");
-      const data = await res.json();
-      setDownloads(data);
+      if (!supabase || !currentUser) return;
+
+      const { data, error } = await supabase
+        .from("downloads")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setDownloads(data || []);
     } catch (e) {
-      console.error("Error loaded downloads logs", e);
+      console.error("Error loading downloads", e);
     }
   };
 
   // Run Economic dataset synthesis query
-  // Run Economic dataset synthesis query
-  // Run Economic dataset synthesis query
-  // Run Economic dataset synthesis query
-  const executeQuery = async (queryText?: string) => {
-    // 🔥 TRICK MAUT: Cari element input di layar secara paksa berdasarkan placeholder/atributnya!
-    let finalQuery = queryText?.trim();
-    
-    if (!finalQuery) {
-      // 1. Coba cari pakai querySelector ke element input text DataMint lu
-      const inputEl = document.querySelector('input[placeholder*="Describe the dataset"]') as HTMLInputElement;
-      if (inputEl) {
-        finalQuery = inputEl.value?.trim();
-      }
-    }
-    
-    if (!finalQuery && searchQuery) {
-      finalQuery = searchQuery.trim();
-    }
-    
-    console.log("🚀 CHECKPOINT 1 UTAMA: executeQuery dipicu! Teks Kueri:", finalQuery);
-    
-    if (!finalQuery) {
-      console.warn("⚠️ Kueri bener-bener kosong, eksekusi dibatalkan.");
-      return;
-    }
-
-    // Paksa set state biar UI tersinkronisasi sempurna sebelum nembak Appwrite
-    setSearchQuery(finalQuery);
+  const executeQuery = async (queryText: string) => {
+    if (!queryText.trim()) return;
+    setSearchQuery(queryText);
     setIsQueryRunning(true);
     setQueryProgressStep(0);
     setActiveQueryData(null);
+    setWarningMessage(null);
     setQueryError(null);
 
+    // Timed checkpoints for high fidelity Perplexity/Bloomberg interface feeling
     const stepInterval = setInterval(() => {
-      setQueryProgressStep((prev) => (prev >= 4 ? 4 : prev + 1));
+      setQueryProgressStep((prev) => {
+        if (prev >= 4) {
+          clearInterval(stepInterval);
+          return 4;
+        }
+        return prev + 1;
+      });
     }, 900);
 
     try {
-      console.log("📡 CHECKPOINT 2: Terbang nembak Appwrite Functions Cloud dengan kueri:", finalQuery);
+      const res = await fetch("/api/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: queryText })
+      });
       
-      // Kirim kueri yang berhasil ketodong tadi ke Appwrite SDK lu
-      const data = await askDataMintAgent(finalQuery);
+      const data = await res.json();
       
-      console.log("✅ CHECKPOINT 3: Appwrite Merespons Sukses! Balikan data:", data);
-      
+      if (!res.ok) {
+        throw new Error(data.error || `Server returned error status ${res.status}`);
+      }
+      // Simpan histori query user ke Supabase
       if (supabase) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user }
+        } = await supabase.auth.getUser();
+
         if (user) {
           await supabase.from("query_history").insert({
             user_id: user.id,
-            prompt: finalQuery,
+            prompt: queryText,
             response: JSON.stringify(data)
           });
         }
       }
-      
       clearInterval(stepInterval);
       setQueryProgressStep(4);
       
+      // Delay slightly for presentation smoothness
       setTimeout(() => {
         setActiveQueryData(data as Dataset);
         setInlinePage(1);
         setFullscreenPage(1);
         if (data.metadata) {
+          // Trigger automatic download log generation in downloads
           addDownloadLog(data as Dataset);
         }
         setIsQueryRunning(false);
+        // Switch tab to home to show the query results
         setCurrentTab("home");
-        console.log("🏁 FINISH: Data ter-render di bento grid!");
       }, 500);
 
     } catch (err: any) {
-      console.error("❌ ERROR DI SEKTOR NETWORK/SDK:", err);
+      console.error("Failed to fetch synthesized query:", err);
       clearInterval(stepInterval);
-      setQueryError(err.message || "Gagal memproses kueri.");
+      setQueryError(err.message || "Gagal memproses kueri karena kesalahan jaringan atau server.");
       setIsQueryRunning(false);
     }
   };
@@ -664,79 +642,79 @@ export default function App() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Persists synthesized result dataset into custom sets
+  // Persists synthesized result dataset into custom sets (Supabase Version)
   const saveDatasetToCatalog = async (dataset: Dataset) => {
     try {
-      if (!supabase) return;
+      if (!currentUser) throw new Error("Harus login dulu!");
 
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
+      const { error } = await supabase!
+        .from('datasets') // Pastikan nama tabel ini bener di Supabase lu
+        .insert([{ 
+          user_id: currentUser.id,
+          // Sesuaikan nama kolom di bawah ini dengan tabel datasets lu
+          title: dataset.title,
+          data: dataset, 
+          created_at: new Date().toISOString()
+        }]);
 
-      if (!user) {
-        console.error("User not logged in");
-        return;
-      }
-
-      const { error } = await supabase
-        .from("datasets")
-        .insert([
-          {
-            user_id: user.id,
-            title: dataset.title,
-            dataset: dataset
-          }
-        ]);
-
-      if (error) {
-        console.error("INSERT ERROR:", error);
-        return;
-      }
-
+      if (error) throw error;
+      
       setSaveSuccess(true);
-
-      fetchDatasets();
-
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-
+      fetchDatasets(); // Pastikan fungsi fetchDatasets juga udah diubah pakai Supabase!
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       console.error("Save error:", e);
     }
   };
 
-  // Deletes dataset
+  // Deletes dataset (Supabase Version)
   const deleteDataset = async (id: string) => {
     try {
-      const res = await fetch(`/api/datasets/${id}`, { method: "DELETE" });
-      if (res.ok) fetchDatasets();
+      const { error } = await supabase!
+        .from('datasets')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      fetchDatasets();
     } catch (e) {
-      console.error(e);
+      console.error("Delete error:", e);
     }
   };
 
-  // Save new saved query benchmark
+  // Save new saved query benchmark (Supabase Version)
   const saveQueryBenchmark = async (title: string, rawQuery: string) => {
     try {
-      await fetch("/api/saved-queries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, rawQuery, frequency: "Monthly" })
-      });
-      fetchSavedQueries();
+      if (!currentUser) return;
+
+      const { error } = await supabase!
+        .from('query_history') // Sesuai dengan screenshot tabel lu!
+        .insert([{ 
+          user_id: currentUser.id,
+          prompt: rawQuery, // Di screenshot lu nama kolomnya 'prompt'
+          response: { title: title }, // Sesuaikan sama format JSON response lu
+          created_at: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+      fetchSavedQueries(); // Ini juga harus udah versi Supabase
     } catch (e) {
-      console.error(e);
+      console.error("Error saving query:", e);
     }
   };
 
-  // Delete saved query
- const deleteSavedQuery = async (id: string) => {
+  // Delete saved query (Supabase Version)
+  const deleteSavedQuery = async (id: string) => {
     try {
-      const res = await fetch(`/api/saved-queries/${id}`, { method: "DELETE" });
-      if (res.ok) fetchSavedQueries();
+      const { error } = await supabase!
+        .from('query_history')
+        .delete()
+        .eq('id', id); // Asumsi primary key lu namanya 'id'
+
+      if (error) throw error;
+      fetchSavedQueries();
     } catch (e) {
-      console.error(e);
+      console.error("Error deleting query:", e);
     }
   };
 
@@ -959,17 +937,20 @@ export default function App() {
   const executePlaygroundRequest = async () => {
     setIsApiLoading(true);
     setApiActiveTab("response");
-    setApiConsoleOutput("/* Executing Appwrite Function... */");
-
+    setApiConsoleOutput("/* Initiated request to active endpoint /api/query ... */");
+    
     const targetQuery = searchQuery || "Indonesia GDP Growth 2000-2025";
-
+    
     try {
-      const data = await askDataMintAgent(targetQuery);
+      const res = await fetch("/api/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: targetQuery })
+      });
+      const data = await res.json();
       setApiConsoleOutput(JSON.stringify(data, null, 2));
     } catch (err: any) {
-      setApiConsoleOutput(
-        `// API Integration Exception:\n${err.message || "Network Timeout"}`
-      );
+      setApiConsoleOutput(`// API Integration Exception:\n${err.message || 'Network Timeout'}`);
     } finally {
       setIsApiLoading(false);
     }
@@ -1085,11 +1066,12 @@ export default function App() {
     return (
       <div id="auth-loading-screen" className={`min-h-screen flex flex-col items-center justify-center font-sans ${darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"}`}>
         <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
-          <div className="relative flex h-10 w-10 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-duration-1000"></span>
-            <span className="relative inline-flex rounded-full h-10 w-10 bg-emerald-500 items-center justify-center text-white">
-              <Sparkles className="w-5 h-5 animate-pulse" />
-            </span>
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+            <img 
+              src={logo} 
+              alt="DataMint Logo" 
+              className="h-full w-full object-contain drop-shadow-sm" 
+            />
           </div>
           <div className="space-y-1.5 mt-2">
             <h3 className="font-display font-medium text-base tracking-tight">Verifying Portal Access</h3>
@@ -1120,8 +1102,12 @@ export default function App() {
 
         <div className="w-full max-w-md space-y-6">
           <div className="text-center select-none animate-fade-in">
-            <div className="mx-auto w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/25 mb-4">
-              <Sparkles className="w-6 h-6 animate-pulse" />
+            <div className="mx-auto mb-4 flex justify-center items-center">
+              <img 
+                src={loading} 
+                alt="DataMint Logo" 
+                className="h-16 w-auto object-contain" 
+              />
             </div>
             <h2 className="text-2xl font-bold font-display tracking-tight text-slate-900 dark:text-white">
               Data<span className="text-emerald-500">Mint</span> Intelligence
