@@ -9,10 +9,8 @@ from supabase import create_client
 from groq import Groq
 
 GEMINI_MODELS = [
-    "gemini-3.5-flash",
+    "gemini-2.5-pro"
     "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-pro-preview"
 ]
 
 GROQ_MODELS = [
@@ -2058,8 +2056,11 @@ def run_agent_query(user_query: str):
 
     # Initialize standard client directly as requested by the user
     try:
-        client = genai.Client()
-        print("DEBUG: Initialized standard GenAI Client.", file=sys.stderr)
+        client = genai.Client(
+            vertexai=True,
+            project="gen-lang-client-0971794485",
+            location="us-central1"
+        )
 
     except Exception as e:
 

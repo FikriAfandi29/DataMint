@@ -653,14 +653,15 @@ export default function App() {
       if (!currentUser) throw new Error("Harus login dulu!");
 
       const { error } = await supabase!
-        .from('datasets') // Pastikan nama tabel ini bener di Supabase lu
-        .insert([{ 
-          user_id: currentUser.id,
-          // Sesuaikan nama kolom di bawah ini dengan tabel datasets lu
-          title: dataset.title,
-          data: dataset, 
-          created_at: new Date().toISOString()
-        }]);
+        .from('datasets')
+        .insert([
+          {
+            user_id: currentUser.id,
+            title: dataset.title,
+            dataset: dataset,
+            created_at: new Date().toISOString()
+          }
+        ]);
 
       if (error) throw error;
       
