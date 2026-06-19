@@ -3,6 +3,7 @@ import subprocess
 import io
 import os
 import json
+import numpy as np
 from datetime import datetime
 import socket
 from supabase import create_client
@@ -1535,9 +1536,27 @@ def fetch_elsevier_literature(search_query: str, limit: int = 25):
 
     original_query = search_query
     upper_query = search_query.upper()
-    if "TITLE(" not in upper_query and "TITLE-ABS-KEY(" not in upper_query:
-        clean_query = search_query.replace('title:', '').replace('TITLE:', '').replace('"', '').strip()
-        search_query = f"TITLE({clean_query})"
+    df = pd.DataFrame(papers)
+    import re
+
+    clean_query = re.sub(
+        r'\s+',
+        ' ',
+        search_query
+    ).strip()
+
+    if (
+        "TITLE(" not in upper_query
+        and
+        "TITLE-ABS-KEY(" not in upper_query
+    ):
+
+        search_query = f'TITLE("{clean_query}")'
+
+    print(
+        f"DEBUG ELSEVIER QUERY = {search_query}",
+        file=sys.stderr
+    )
         
     url = "https://api.elsevier.com/content/search/scopus"
     headers = {
@@ -1550,19 +1569,96 @@ def fetch_elsevier_literature(search_query: str, limit: int = 25):
         "view": "STANDARD"
     }
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=10
+        )
+
+        print(
+            f"DEBUG ELSEVIER STATUS = {response.status_code}",
+            file=sys.stderr
+        )
+
         if response.status_code == 200:
+
             data = response.json()
-            entries = data.get("search-results", {}).get("entry", [])
-            
+
+            entries = data.get(
+                "search-results",
+                {}
+            ).get(
+                "entry",
+                []
+            )
+
+            # Fallback search jika hasil kosong
             if not entries:
-                return f"No strictly relevant academic papers found for the title query: '{search_query}'. Try simplifying the keywords."
+
+                print(
+                    "DEBUG ELSEVIER FALLBACK SEARCH",
+                    file=sys.stderr
+                )
+
+                words = [
+                    w
+                    for w in clean_query.split()
+                    if len(w) > 3
+                ]
+
+                fallback_query = (
+                    "TITLE("
+                    + " AND ".join(words[:5])
+                    + ")"
+                )
+
+                params["query"] = fallback_query
+
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    params=params,
+                    timeout=10
+                )
+
+                print(
+                    f"DEBUG ELSEVIER FALLBACK QUERY = {fallback_query}",
+                    file=sys.stderr
+                )
+
+                data = response.json()
+
+                entries = data.get(
+                    "search-results",
+                    {}
+                ).get(
+                    "entry",
+                    []
+                )
+
+            if not entries:
+                return (
+                    f"No relevant papers found for "
+                    f"'{original_query}'."
+                )
+
+            import json
+
+            print(
+                json.dumps(entries[0], indent=2)[:3000],
+                file=sys.stderr
+            )
             
             papers = []
             for item in entries:
                 title = item.get("dc:title", "No Title")
                 journal = item.get("prism:publicationName", "Unknown Journal")
-                date = item.get("prism:coverDate", "Unknown Date")
+                date = (
+                    item.get("prism:coverDate")
+                    or item.get("prism:coverDisplayDate")
+                    or "Unknown Date"
+                )
                 doi = item.get("prism:doi", "No DOI")
                 
                 if doi and doi != "No DOI":
@@ -1582,9 +1678,14 @@ def fetch_elsevier_literature(search_query: str, limit: int = 25):
                     "URL": article_url  
                 })
                 
-            df = pd.DataFrame(papers)
+            import re
+
+            clean_title = re.sub(r"TITLE\((.*?)\)", r"\1", original_query, flags=re.I)
+            clean_title = re.sub(r"\bAND\b|\bOR\b", " ", clean_title, flags=re.I)
+            clean_title = " ".join(clean_title.split())
+
             st.session_state.all_dfs.append({
-                "title": f"Elsevier - {original_query[:20]}", 
+                "title": f"Literature Review: {clean_title.title()}",
                 "df": df
             })
             recent_data = df.head(10).to_string(index=False)
@@ -1925,6 +2026,34 @@ supabase = create_client(
     SUPABASE_KEY
 )
 
+import sys
+
+try:
+    test = (
+        supabase
+        .table("economic_indicators")
+        .select("*")
+        .limit(3)
+        .execute()
+    )
+
+    print(
+        f"DEBUG DIRECT TEST ROWS = {len(test.data)}",
+        file=sys.stderr
+    )
+
+    if test.data:
+        print(
+            f"DEBUG FIRST ROW = {test.data[0]}",
+            file=sys.stderr
+        )
+
+except Exception as e:
+    print(
+        f"DEBUG DIRECT TEST ERROR = {e}",
+        file=sys.stderr
+    )
+
 def fetch_bps_data(
     indicator: str,
     region: str = None,
@@ -1966,14 +2095,13 @@ def fetch_bps_data(
     """
 
     try:
-
-        print("=" * 60)
-        print("DEBUG BPS TOOL CALLED")
-        print(f"indicator = {indicator}")
-        print(f"region = {region}")
-        print(f"start_date = {start_date}")
-        print(f"end_date = {end_date}")
-        print("=" * 60)
+        import sys
+        print("=" * 60, file=sys.stderr)
+        print("DEBUG BPS TOOL CALLED", file=sys.stderr)
+        print(f"indicator = {indicator}", file=sys.stderr)
+        print(f"region = {region}", file=sys.stderr)
+        print(f"start_date = {start_date}", file=sys.stderr)
+        print(f"end_date = {end_date}", file=sys.stderr)
 
         REGION_MAPPING = {
             "banten": "Banten",
@@ -2027,13 +2155,24 @@ def fetch_bps_data(
         if end_date:
             query = query.lte("date", end_date)
 
+        print(
+            f"DEBUG FINAL FILTER => indicator={indicator}, region={region}, start={start_date}, end={end_date}",
+            file=sys.stderr
+        )
+
         result = query.order("date").execute()
 
-        print(f"DEBUG rows returned = {len(result.data)}")
+        print(
+            f"DEBUG rows returned = {len(result.data)}",
+            file=sys.stderr
+        )
 
         if result.data:
             print("DEBUG sample row:")
-            print(result.data[0])
+            print(
+                result.data[0],
+                file=sys.stderr
+            )
 
         if not result.data:
 
@@ -2123,7 +2262,7 @@ def fetch_bi_data(indicator: str = "exchange_rate"):
     df = pd.DataFrame(data_map[selected])
     title = f"Bank Indonesia (BI) - {selected.upper()}"
     st.session_state.all_dfs.append({"title": title, "df": df})
-    return f"Successfully compiled actual Bank Indonesia (BI) data for '{selected}':\n{df.to_string(index=False)}"
+    return f"Successfully compiled actual Bank Indonesia (BI) data for '{selected}':\n{df.head(20).to_string(index=False)}"
 
 def call_groq(prompt, model_name="openai/gpt-oss-120b"):
 
@@ -2195,7 +2334,6 @@ def run_agent_query(user_query: str):
         fetch_elsevier_literature,
         fetch_adb_macro_data,
         fetch_eurostat_macro_data,
-        fetch_springer_literature,
         fetch_nasa_small_body_data,
         fetch_bps_data,
         fetch_bi_data
@@ -2338,7 +2476,6 @@ def run_agent_query(user_query: str):
         'fetch_elsevier_literature': fetch_elsevier_literature,
         'fetch_adb_macro_data': fetch_adb_macro_data,
         'fetch_eurostat_macro_data': fetch_eurostat_macro_data,
-        'fetch_springer_literature': fetch_springer_literature,
         'fetch_nasa_small_body_data': fetch_nasa_small_body_data,
         'fetch_bps_data': fetch_bps_data,
         'fetch_bi_data': fetch_bi_data
@@ -2407,22 +2544,33 @@ def run_agent_query(user_query: str):
     # Execute each called tool
     if calls:
         print(f"DEBUG: Found {len(calls)} function calls to execute.", file=sys.stderr)
+
         for call in calls:
+
             name = None
             args = {}
+
             if hasattr(call, 'name'):
                 name = call.name
                 args = call.args or {}
+
             elif isinstance(call, dict):
                 name = call.get('name')
                 args = call.get('args', {})
-                
+
             if name and name in tool_map:
+
                 try:
+
                     args_dict = dict(args)
-                    print(f"DEBUG: Executing tool '{name}' with arguments {args_dict}", file=sys.stderr)
-                    # Run the tool function (which appends its fetched df to st.session_state.all_dfs)
+
+                    print(
+                        f"DEBUG: Executing tool '{name}' with arguments {args_dict}",
+                        file=sys.stderr
+                    )
+
                     result = tool_map[name](**args_dict)
+
                     print(
                         f"DEBUG: Tool '{name}' completed successfully",
                         file=sys.stderr
@@ -2432,9 +2580,23 @@ def run_agent_query(user_query: str):
                         f"DEBUG RESULT: {str(result)[:1000]}",
                         file=sys.stderr
                     )
-                except Exception as e:
-                    print(f"DEBUG: Error calling tool '{name}': {e}", file=sys.stderr)
 
+                    # STOP jika dataset sudah berhasil didapat
+                    if len(st.session_state.all_dfs) > 0:
+
+                        print(
+                            "DEBUG: Dataset found, stopping additional tool calls",
+                            file=sys.stderr
+                        )
+
+                        break
+
+                except Exception as e:
+
+                    print(
+                        f"DEBUG: Error calling tool '{name}': {e}",
+                        file=sys.stderr
+                    )
     # 3. Detect if tools succeeded and populated st.session_state.all_dfs
     data_found = st.session_state.all_dfs
 
@@ -2475,11 +2637,44 @@ def run_agent_query(user_query: str):
 
     for idx, item in enumerate(data_found):
         title = item["title"]
-        df = item["df"]
+        df = item["df"].copy()
+
+        drop_cols = [
+            "id",
+            "created_at",
+            "source",
+            "country"
+        ]
+
+        df = df.drop(
+            columns=[c for c in drop_cols if c in df.columns],
+            errors="ignore"
+        )
 
         data_context += f"\nDataset {idx+1}: {title}\n"
-        data_context += df.to_string(index=False)
+        data_context += df.head(20).to_string(index=False)
         data_context += "\n"
+
+    dataset_title = st.session_state.all_dfs[0]["title"]
+
+    source_name = dataset_title.split(" - ")[0]
+
+    primary_df = st.session_state.all_dfs[0]["df"].copy()
+
+    primary_df = primary_df.replace({np.nan: None})
+
+    return {
+        "title": dataset_title,
+        "sources": [source_name],
+        "metadata": {
+            "observations": len(primary_df)
+        },
+        "columns": list(primary_df.columns),
+        "data": primary_df.to_dict("records"),
+        "chartSeries": [],
+        "chartData": []
+    }
+        
     # 4. Phase 2: Structuralize the output to match DataHub React frontend format
     schema_prompt = f"""
     You are the DataHub format engine.
@@ -2522,6 +2717,90 @@ def run_agent_query(user_query: str):
     - CRITICAL TABLE ROW DISCIPLINE: In the raw table rows ("data" array), you MUST map and include up to 20 representative, chronologically spread or sequential observation rows (e.g. at least 15 to 25 data points if available in the source data) rather than short-cutting or truncating to just 2 or 3 cells, so the user can analyze dense historical columns in the UI. If the dataset has more than 20 items, sample/space up to 20 rows evenly from the beginning to the end.
     - In "chartData" array: keys "value1", "value2" etc. correspond to values in "chartSeries". Crucially, "value1" etc. MUST be plain numbers (floats/integers, e.g. 4.5) to allow Recharts to plot them. Use "label" corresponding to primary X-axis (Year/Period/Date/Quarter).
     - Ensure title and labels are descriptive.
+    
+
+    IMPORTANT DATA CLEANING RULES
+
+    For economic datasets from BPS, BI, World Bank, IMF, FRED:
+
+    NEVER expose these database fields:
+
+    - id
+    - created_at
+    - source
+    - country
+
+    Use only analytical fields:
+
+    - date
+    - value
+    - region
+    - indicator
+    - unit
+
+    When a dataset contains only one metric:
+
+    Example:
+
+    Year | HDI
+    2018 | 71.95
+    2019 | 72.44
+    2020 | 72.45
+
+    Example:
+
+    Year | GDP Current Price
+    2018 | 1960627.65
+    2019 | 2123153.71
+    2020 | 2082107.26
+
+    For chartData:
+    - ALWAYS use the 'value' column as value1
+    - NEVER use 'id' as chart value
+    - NEVER use created_at
+    - NEVER use database primary keys
+
+    For columns:
+    Return only user-facing analytical columns.
+
+    Bad:
+    ["id","source","country","indicator","date","value","unit","created_at","region"]
+
+    Good:
+    ["Year","GDP Current Price"]
+
+    Good:
+    ["Year","HDI"]
+
+    Good:
+    ["Year","Inflation"]
+
+    CRITICAL COLUMN MAPPING RULES
+
+    - Preserve original dataframe column names exactly.
+    - NEVER rename columns to value1, value2, value3 in the table output.
+    - The "columns" array must contain the actual economic variable names.
+    - The "data" array must preserve the original field names.
+
+    Example:
+
+    columns:
+    [
+    "Year",
+    "Gross domestic product",
+    "Exports",
+    "Imports"
+    ]
+
+    data:
+    [
+    {
+    "Year":"2024",
+    "Gross domestic product":"2.8",
+    "Exports":"3.6",
+    "Imports":"5.8"
+    }
+    ]
     """
 
     final_structured_response = None
