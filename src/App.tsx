@@ -676,12 +676,18 @@ export default function App() {
   // Deletes dataset (Supabase Version)
   const deleteDataset = async (id: string) => {
     try {
-      const { error } = await supabase!
+      console.log("Deleting dataset:", id);
+
+      const { data, error } = await supabase!
         .from('datasets')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select();
+
+      console.log("Delete result:", data);
 
       if (error) throw error;
+
       fetchDatasets();
     } catch (e) {
       console.error("Delete error:", e);
