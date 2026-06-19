@@ -1976,16 +1976,16 @@ def fetch_bps_data(
         print("=" * 60)
 
         REGION_MAPPING = {
-            "banten": "36 Banten",
-            "jakarta": "31 DKI Jakarta",
-            "dki jakarta": "31 DKI Jakarta",
-            "jawa barat": "32 Jawa Barat",
-            "west java": "32 Jawa Barat",
-            "jawa tengah": "33 Jawa Tengah",
-            "central java": "33 Jawa Tengah",
-            "jawa timur": "35 Jawa Timur",
-            "east java": "35 Jawa Timur",
-            "bali": "51 Bali"
+            "banten": "Banten",
+            "jakarta": "DKI Jakarta",
+            "dki jakarta": "DKI Jakarta",
+            "jawa barat": "Jawa Barat",
+            "west java": "Jawa Barat",
+            "jawa tengah": "Jawa Tengah",
+            "central java": "Jawa Tengah",
+            "jawa timur": "Jawa Timur",
+            "east java": "Jawa Timur",
+            "bali": "Bali"
         }
 
         if region:
@@ -2001,6 +2001,12 @@ def fetch_bps_data(
 
             print(f"DEBUG normalized region = {region}")
 
+        if start_date and len(str(start_date)) == 4:
+            start_date = f"{start_date}-01-01"
+
+        if end_date and len(str(end_date)) == 4:
+            end_date = f"{end_date}-12-31"
+
         query = (
             supabase
             .table("economic_indicators")
@@ -2009,7 +2015,11 @@ def fetch_bps_data(
         )
 
         if region:
-            query = query.ilike("region", f"%{region}%")
+            region_keyword = region.split()[-1]
+            query = query.ilike(
+                "region",
+                f"%{region_keyword}%"
+            )
 
         if start_date:
             query = query.gte("date", start_date)
@@ -2206,6 +2216,12 @@ def run_agent_query(user_query: str):
         "If you need to show a dollar sign, write it as plain text without wrapping the whole phrase.\n"
         "6. ZERO CONVERSATIONAL FILLERS: Do not use emojis, exclamation marks, or markdown decorations. Maintain a zero-narrative, pure data-pipeline execution behavior.\n"
         "7. FUNCTION CALLING FOR DATA ROUTING: To route a query to any data source (e.g., World Bank, BPS, FRED, News, SEC, UN Comtrade), you MUST call the corresponding function/tool. Generating a function call is the ONLY valid way to output direct tool execution parameters and get real data."
+        "8. INDONESIA REGIONAL DATA OVERRIDE: "
+        "If the query contains Indonesian provinces, BPS indicators, "
+        "PDRB, HDI, Poverty Rate, Gini Ratio, LFPR, Unemployment Rate, "
+        "Minimum Wage, BI Rate, Inflation, or any Indonesia regional statistic, "
+        "ALWAYS call fetch_bps_data first. "
+        "DO NOT call fetch_macro_data, FRED, IMF, OECD, ADB, ECB, or World Bank for these requests.\n"
     )
 
     # First turn: Ask the model to execute tools with robust multi-model fallback list
@@ -2421,6 +2437,16 @@ def run_agent_query(user_query: str):
 
     # 3. Detect if tools succeeded and populated st.session_state.all_dfs
     data_found = st.session_state.all_dfs
+
+    if len(data_found) == 0:
+        return {
+            "success": False,
+            "title": "No Verified Dataset Found",
+            "message": (
+                "No real dataset was returned by any tool. "
+                "Synthetic or estimated data generation is blocked."
+            )
+        }
 
     # HARD GUARD: Never allow synthetic economic datasets
     if not data_found:
