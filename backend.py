@@ -1932,19 +1932,74 @@ def fetch_bps_data(
     end_date: str = None
 ):
     """
-    Fetches Indonesian economic indicators from DataMint's Supabase database.
+    BPS Indonesia database.
 
-    Examples:
-    - HDI
-    - POVERTY_RATE_TOTAL
-    - GINI_RATIO_TOTAL
-    - MINIMUM_WAGE
-    - BI_RATE
-    - INFLATION
-    - GRDP
+    Supported indicators:
+
+    HDI
+    POVERTY_RATE_TOTAL
+    POVERTY_RATE_URBAN
+    POVERTY_RATE_RURAL
+    GINI_RATIO_TOTAL
+    GINI_RATIO_URBAN
+    GINI_RATIO_RURAL
+    MINIMUM_WAGE
+    BI_RATE
+    INFLATION
+    GDP_CURRENT_PRICE
+    LFPR_FEB
+    LFPR_AUG
+    UNEMPLOYMENT_RATE_FEB
+    UNEMPLOYMENT_RATE_AUG
+
+    Province mappings:
+
+    Banten -> 36 Banten
+    DKI Jakarta -> 31 DKI Jakarta
+    West Java -> 32 Jawa Barat
+    Central Java -> 33 Jawa Tengah
+    East Java -> 35 Jawa Timur
+    Bali -> 51 Bali
+
+    Use this tool whenever the user asks for Indonesian regional statistics.
+    If no date range is provided, retrieve all available data.
     """
 
     try:
+
+        print("=" * 60)
+        print("DEBUG BPS TOOL CALLED")
+        print(f"indicator = {indicator}")
+        print(f"region = {region}")
+        print(f"start_date = {start_date}")
+        print(f"end_date = {end_date}")
+        print("=" * 60)
+
+        REGION_MAPPING = {
+            "banten": "36 Banten",
+            "jakarta": "31 DKI Jakarta",
+            "dki jakarta": "31 DKI Jakarta",
+            "jawa barat": "32 Jawa Barat",
+            "west java": "32 Jawa Barat",
+            "jawa tengah": "33 Jawa Tengah",
+            "central java": "33 Jawa Tengah",
+            "jawa timur": "35 Jawa Timur",
+            "east java": "35 Jawa Timur",
+            "bali": "51 Bali"
+        }
+
+        if region:
+            region = region.strip()
+
+            mapped_region = REGION_MAPPING.get(
+                region.lower(),
+                None
+            )
+
+            if mapped_region:
+                region = mapped_region
+
+            print(f"DEBUG normalized region = {region}")
 
         query = (
             supabase
@@ -1954,7 +2009,7 @@ def fetch_bps_data(
         )
 
         if region:
-            query = query.eq("region", region)
+            query = query.ilike("region", f"%{region}%")
 
         if start_date:
             query = query.gte("date", start_date)
@@ -1964,10 +2019,44 @@ def fetch_bps_data(
 
         result = query.order("date").execute()
 
+        print(f"DEBUG rows returned = {len(result.data)}")
+
+        if result.data:
+            print("DEBUG sample row:")
+            print(result.data[0])
+
         if not result.data:
-            return f"No data found for indicator={indicator}"
+
+            # cari indikator yang tersedia
+            available = (
+                supabase
+                .table("economic_indicators")
+                .select("indicator")
+                .limit(20)
+                .execute()
+            )
+
+            indicators = sorted(
+                list(set([
+                    x["indicator"]
+                    for x in available.data
+                    if "indicator" in x
+                ]))
+            )
+
+            print("DEBUG available indicators:")
+            print(indicators)
+
+            return (
+                f"No data found.\n"
+                f"indicator={indicator}\n"
+                f"region={region}\n"
+                f"available indicators={indicators}"
+            )
 
         df = pd.DataFrame(result.data)
+
+        print(f"DEBUG dataframe shape = {df.shape}")
 
         st.session_state.all_dfs.append({
             "title": f"BPS - {indicator}",
@@ -1977,13 +2066,18 @@ def fetch_bps_data(
         preview = df.tail(10).to_string(index=False)
 
         return (
-            f"Successfully retrieved {len(df)} rows for "
-            f"{indicator}.\n\n"
+            f"Successfully retrieved {len(df)} rows for {indicator}.\n\n"
             f"{preview}\n\n"
             f"Please analyze the trend."
         )
 
     except Exception as e:
+
+        import traceback
+
+        print("DEBUG BPS ERROR")
+        print(traceback.format_exc())
+
         return f"Failed to fetch BPS data. Error: {e}"
 
 def fetch_bi_data(indicator: str = "exchange_rate"):
@@ -2127,7 +2221,15 @@ def run_agent_query(user_query: str):
                     contents=user_query,
                     config=types.GenerateContentConfig(
                         system_instruction=system_instruction,
-                        tools=all_tools
+                        tools=all_tools,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                            disable=False
+                        ),
+                        tool_config=types.ToolConfig(
+                            function_calling_config=types.FunctionCallingConfig(
+                                mode="ANY"
+                            )
+                        )
                     )
                 )
                 print(f"DEBUG: Successfully invoked model '{model_name}'!", file=sys.stderr)
@@ -2319,21 +2421,39 @@ def run_agent_query(user_query: str):
 
     # 3. Detect if tools succeeded and populated st.session_state.all_dfs
     data_found = st.session_state.all_dfs
-    
-    # Prepare details of the data fetched, if any
-    data_context = ""
-    if data_found:
-        data_context = "CRITICAL REAL DATA ACQUIRED FROM SECURED APIS:\n"
-        for idx, item in enumerate(data_found):
-            title = item["title"]
-            df = item["df"]
-            data_context += f"\nDataset {idx+1}: {title}\n"
-            data_context += df.to_string(index=False)
-            data_context += "\n"
-    else:
-        # Grounding fallback or general intelligence estimation
-        data_context = "No direct tool was executed successfully, or returned blank. Please formulate high-fidelity estimate data."
 
+    # HARD GUARD: Never allow synthetic economic datasets
+    if not data_found:
+        return {
+            "title": "No Verified Data Found",
+            "sources": [],
+            "metadata": {
+                "frequency": "",
+                "unit": "",
+                "lastUpdated": "",
+                "observations": "0"
+            },
+            "columns": [],
+            "data": [],
+            "chartSeries": [],
+            "chartData": [],
+            "message": (
+                "No verified dataset was returned by any connected source "
+                "(BPS, BI, FRED, IMF, World Bank, OECD, ECB, etc). "
+                "DataMint refuses to generate estimated or synthetic economic data."
+            )
+        }
+
+    # Prepare details of the verified data fetched
+    data_context = "CRITICAL REAL DATA ACQUIRED FROM VERIFIED SOURCES:\n"
+
+    for idx, item in enumerate(data_found):
+        title = item["title"]
+        df = item["df"]
+
+        data_context += f"\nDataset {idx+1}: {title}\n"
+        data_context += df.to_string(index=False)
+        data_context += "\n"
     # 4. Phase 2: Structuralize the output to match DataHub React frontend format
     schema_prompt = f"""
     You are the DataHub format engine.
@@ -2341,7 +2461,12 @@ def run_agent_query(user_query: str):
     
     Here is the exact data pulled from live systems or standard references regarding this query:
     {data_context}
-    
+    CRITICAL RULES:
+    - NEVER invent, estimate, interpolate, forecast, simulate, or hallucinate data.
+    - ONLY use values present in the verified datasets above.
+    - If no verified dataset exists, return an empty dataset.
+    - Do not create fictional historical observations.
+    - Do not create fictional GDP, inflation, unemployment, wage, or financial figures.
     You MUST output a valid structured JSON adhering exactly to this format:
     {{
       "title": "Concise capitalized visual title",
@@ -2382,7 +2507,31 @@ def run_agent_query(user_query: str):
                 contents=schema_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    system_instruction="Generate strictly formatted valid JSON containing correct historical data structures. Do not add any extra greeting, conversational text, or backticks markups."
+                    system_instruction="""
+                    Generate strictly formatted valid JSON.
+
+                    CRITICAL RULES:
+
+                    1. Use ONLY the data provided in the prompt.
+
+                    2. NEVER invent, estimate, interpolate, extrapolate, simulate,
+                    or fabricate historical observations.
+
+                    3. If no verified dataset exists, return:
+
+                    {
+                    "success": false,
+                    "message": "No verified dataset found."
+                    }
+
+                    4. Every value in data[] and chartData[] must originate from the
+                    supplied dataframe.
+
+                    5. Do not generate fictional GDP, inflation, poverty,
+                    minimum wage, HDI, unemployment, or financial values.
+
+                    6. Output JSON only.
+                    """
                 )
             )
             print(f"DEBUG: Successfully structured response with model '{model_name}'!", file=sys.stderr)

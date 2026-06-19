@@ -1080,7 +1080,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-4 text-center p-8 max-w-sm">
           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
             <img 
-              src={logo} 
+              src={loading} 
               alt="DataMint Logo" 
               className="h-full w-full object-contain drop-shadow-sm" 
             />
