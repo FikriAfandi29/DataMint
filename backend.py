@@ -10,8 +10,8 @@ from supabase import create_client
 from groq import Groq
 
 GEMINI_MODELS = [
-    "gemini-2.5-pro",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
+    "gemini-2.5-pro"
 ]
 
 GROQ_MODELS = [
@@ -826,6 +826,9 @@ def fetch_stock_data(ticker: str, start_date: str = None, end_date: str = None, 
         else:
             data = yf.download(ticker, period=period)
 
+        if data.empty:
+            return f"No stock data found for {ticker}."
+
         data = data.reset_index()
         # Flatten multi-index columns if needed
         if isinstance(data.columns, pd.MultiIndex):
@@ -833,9 +836,7 @@ def fetch_stock_data(ticker: str, start_date: str = None, end_date: str = None, 
             
         st.session_state.all_dfs.append({"title": f"Stock - {ticker}", "df": data})
         recent_data = data.tail(5).to_string()
-        return (f"Successfully fetched {len(data)} rows of data for {ticker} from {start_date or 'recent'} to {end_date or period}. "
-                f"Here is the data snapshot for your analysis:\n{recent_data}\n"
-                f"Please provide a short, professional economic insight based on these numbers.")
+        return f"DATA MINE SUCCESS: {ticker}\n{recent_data}"
     except Exception as e:
         return f"Failed to fetch stock data for {ticker}. Error: {e}"
 
@@ -1536,7 +1537,6 @@ def fetch_elsevier_literature(search_query: str, limit: int = 25):
 
     original_query = search_query
     upper_query = search_query.upper()
-    df = pd.DataFrame(papers)
     import re
 
     clean_query = re.sub(
@@ -1775,7 +1775,7 @@ def fetch_eurostat_macro_data(country_code: str, category: str, start_year: str 
 
     Parameters:
     - country_code: DE, FR, IT, ES, NL, etc.
-    - category: 'gdp' or 'inflation'
+    - category: 'gdp' or 'inflation'. (Note: For Unemployment rates, use 'fetch_ilo_unemployment_data' instead).
     - start_year: default 2023
     """
 
@@ -2345,7 +2345,7 @@ def run_agent_query(user_query: str):
         "CRITICAL EXECUTION RULES:\n"
         f"1. DATA AVAILABILITY: Treat all data requests up to {today_date} (including 2026) as historical. Do not return date-restriction errors.\n"
         "2. STRICT TOOL ROUTING: Route queries to a single primary database tool that best fits the target metric (e.g., FRED, BPS, or World Bank). "
-        "Do not cross-call or trigger multiple structural network APIs simultaneously for a single request unless explicitly asked for comparative data.\n"
+        "You MUST call multiple tools if the user asks for multiple variables from different regions or sources (e.g., China Inflation from IMF AND Jakarta Poverty from BPS).\n"
         "3. DATA PRECISION: When an API tool returns structural JSON or time-series data, map the parameters exactly to the output parameters. Do not truncate records or alter numerical values.\n"
         "4. NO TEXT GENERATION OR DECLARATIONS: Do not generate conversational summaries, trend paragraphs, apologies, or feedback questions. "
         "Output ONLY the required raw code, structured markdown table of the raw metrics, or the direct tool execution parameters.\n"
@@ -2355,11 +2355,10 @@ def run_agent_query(user_query: str):
         "6. ZERO CONVERSATIONAL FILLERS: Do not use emojis, exclamation marks, or markdown decorations. Maintain a zero-narrative, pure data-pipeline execution behavior.\n"
         "7. FUNCTION CALLING FOR DATA ROUTING: To route a query to any data source (e.g., World Bank, BPS, FRED, News, SEC, UN Comtrade), you MUST call the corresponding function/tool. Generating a function call is the ONLY valid way to output direct tool execution parameters and get real data."
         "8. INDONESIA REGIONAL DATA OVERRIDE: "
-        "If the query contains Indonesian provinces, BPS indicators, "
-        "PDRB, HDI, Poverty Rate, Gini Ratio, LFPR, Unemployment Rate, "
-        "Minimum Wage, BI Rate, Inflation, or any Indonesia regional statistic, "
-        "ALWAYS call fetch_bps_data first. "
-        "DO NOT call fetch_macro_data, FRED, IMF, OECD, ADB, ECB, or World Bank for these requests.\n"
+        "If and only if the query explicitly mentions Indonesia or its regional provinces (e.g. Jakarta, Bali, West Java), "
+        "use fetch_bps_data for that specific part. "
+        "DO NOT use BPS tools for other nations like Germany or USA. "
+        "You may still call IMF/FRED/WB for parts of the query referring to OTHER countries.\n"
     )
 
     # First turn: Ask the model to execute tools with robust multi-model fallback list
@@ -2381,7 +2380,7 @@ def run_agent_query(user_query: str):
                         ),
                         tool_config=types.ToolConfig(
                             function_calling_config=types.FunctionCallingConfig(
-                                mode="ANY"
+                                mode="AUTO"
                             )
                         )
                     )
@@ -2457,237 +2456,43 @@ def run_agent_query(user_query: str):
                 "Semua model Gemini dan Groq gagal."
             )
 
-    # 3. Handle any requested function calls dynamically to populate st.session_state.all_dfs
-    print("=== GEMINI RESPONSE ===", file=sys.stderr)
-    print(response, file=sys.stderr)
+    # SDK automatically handles function execution since automatic_function_calling=True
+    # We just need to check if dataframes were populated in st.session_state.all_dfs
+    print("=== GEMINI AGENT FINISHED ===", file=sys.stderr)
     
-    tool_map = {
-        'fetch_stock_data': fetch_stock_data,
-        'fetch_macro_data': fetch_macro_data,
-        'fetch_fred_data': fetch_fred_data,
-        'fetch_news_data': fetch_news_data,
-        'fetch_imf_data': fetch_imf_data,
-        'fetch_ilo_unemployment_data': fetch_ilo_unemployment_data,
-        'fetch_oecd_data': fetch_oecd_data,
-        'fetch_ecb_data': fetch_ecb_data,
-        'fetch_sec_cashflow': fetch_sec_cashflow,
-        'fetch_un_comtrade_data': fetch_un_comtrade_data,
-        'fetch_bea_nipa_data': fetch_bea_nipa_data,
-        'fetch_elsevier_literature': fetch_elsevier_literature,
-        'fetch_adb_macro_data': fetch_adb_macro_data,
-        'fetch_eurostat_macro_data': fetch_eurostat_macro_data,
-        'fetch_nasa_small_body_data': fetch_nasa_small_body_data,
-        'fetch_bps_data': fetch_bps_data,
-        'fetch_bi_data': fetch_bi_data
-    }
-
-    calls = []
-
-# Try looking for response.function_calls first
-    if hasattr(response, 'function_calls') and response.function_calls:
-
-        print("DEBUG: response.function_calls ditemukan", file=sys.stderr)
-
-        calls = response.function_calls
-
-    # Else check candidates and parts
-    elif response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-
-        print("DEBUG: cek candidates", file=sys.stderr)
-
-        for part in response.candidates[0].content.parts:
-
-            if hasattr(part, 'function_call') and part.function_call:
-
-                print(
-                    f"DEBUG: Gemini meminta tool {part.function_call.name}",
-                    file=sys.stderr
-                )
-
-                calls.append(part.function_call)
-
-            elif isinstance(part, dict) and part.get('function_call'):
-
-                try:
-                    print(
-                        f"DEBUG: Gemini meminta tool {part['function_call'].get('name')}",
-                        file=sys.stderr
-                    )
-                except Exception:
-                    pass
-
-                calls.append(part['function_call'])
-
-            elif hasattr(part, 'to_json'):
-
-                try:
-                    pj = part.to_json()
-
-                    import json as json_mod
-                    pjd = json_mod.loads(pj)
-
-                    if 'functionCall' in pjd:
-
-                        try:
-                            print(
-                                f"DEBUG: Gemini meminta tool {pjd['functionCall'].get('name')}",
-                                file=sys.stderr
-                            )
-                        except Exception:
-                            pass
-
-                        calls.append(pjd['functionCall'])
-
-                except Exception:
-                    pass
-
-    # Execute each called tool
-    if calls:
-        print(f"DEBUG: Found {len(calls)} function calls to execute.", file=sys.stderr)
-
-        for call in calls:
-
-            name = None
-            args = {}
-
-            if hasattr(call, 'name'):
-                name = call.name
-                args = call.args or {}
-
-            elif isinstance(call, dict):
-                name = call.get('name')
-                args = call.get('args', {})
-
-            if name and name in tool_map:
-
-                try:
-
-                    args_dict = dict(args)
-
-                    print(
-                        f"DEBUG: Executing tool '{name}' with arguments {args_dict}",
-                        file=sys.stderr
-                    )
-
-                    result = tool_map[name](**args_dict)
-
-                    print(
-                        f"DEBUG: Tool '{name}' completed successfully",
-                        file=sys.stderr
-                    )
-
-                    print(
-                        f"DEBUG RESULT: {str(result)[:1000]}",
-                        file=sys.stderr
-                    )
-
-                    # STOP jika dataset sudah berhasil didapat
-                    if len(st.session_state.all_dfs) > 0:
-
-                        print(
-                            "DEBUG: Dataset found, stopping additional tool calls",
-                            file=sys.stderr
-                        )
-
-                        break
-
-                except Exception as e:
-
-                    print(
-                        f"DEBUG: Error calling tool '{name}': {e}",
-                        file=sys.stderr
-                    )
     # 3. Detect if tools succeeded and populated st.session_state.all_dfs
     data_found = st.session_state.all_dfs
 
-    if len(data_found) == 0:
-        return {
-            "success": False,
-            "title": "No Verified Dataset Found",
-            "message": (
-                "No real dataset was returned by any tool. "
-                "Synthetic or estimated data generation is blocked."
-            )
-        }
+    # Deduplicate and validate
+    unique_dfs = []
+    seen_titles = set()
+    for item in data_found:
+        if item["title"] not in seen_titles and not item["df"].empty:
+            unique_dfs.append(item)
+            seen_titles.add(item["title"])
 
-    # HARD GUARD: Never allow synthetic economic datasets
-    if not data_found:
-        return {
-            "title": "No Verified Data Found",
-            "sources": [],
-            "metadata": {
-                "frequency": "",
-                "unit": "",
-                "lastUpdated": "",
-                "observations": "0"
-            },
-            "columns": [],
-            "data": [],
-            "chartSeries": [],
-            "chartData": [],
-            "message": (
-                "No verified dataset was returned by any connected source "
-                "(BPS, BI, FRED, IMF, World Bank, OECD, ECB, etc). "
-                "DataMint refuses to generate estimated or synthetic economic data."
-            )
-        }
+    if not unique_dfs:
+        return generate_smart_fallback_data(user_query)
 
-    # Prepare details of the verified data fetched
-    data_context = "CRITICAL REAL DATA ACQUIRED FROM VERIFIED SOURCES:\n"
+    # Prepare context from ALL fetched datasets for merging
+    data_context = "REAL DATA ACQUIRED FROM VERIFIED SOURCES:\n"
+    for idx, item in enumerate(unique_dfs):
+        data_context += f"\nDataset {idx+1} ({item['title']}):\n"
+        data_context += item['df'].to_string(index=False) + "\n"
 
-    for idx, item in enumerate(data_found):
-        title = item["title"]
-        df = item["df"].copy()
-
-        drop_cols = [
-            "id",
-            "created_at",
-            "source",
-            "country"
-        ]
-
-        df = df.drop(
-            columns=[c for c in drop_cols if c in df.columns],
-            errors="ignore"
-        )
-
-        data_context += f"\nDataset {idx+1}: {title}\n"
-        data_context += df.head(20).to_string(index=False)
-        data_context += "\n"
-
-    dataset_title = st.session_state.all_dfs[0]["title"]
-
-    source_name = dataset_title.split(" - ")[0]
-
-    primary_df = st.session_state.all_dfs[0]["df"].copy()
-
-    primary_df = primary_df.replace({np.nan: None})
-
-    return {
-        "title": dataset_title,
-        "sources": [source_name],
-        "metadata": {
-            "observations": len(primary_df)
-        },
-        "columns": list(primary_df.columns),
-        "data": primary_df.to_dict("records"),
-        "chartSeries": [],
-        "chartData": []
-    }
-        
-    # 4. Phase 2: Structuralize the output to match DataHub React frontend format
+    # 4. Phase 2: Rapid Structuralization
     schema_prompt = f"""
-    You are the DataHub format engine.
     The user's query was: "{user_query}"
     
     Here is the exact data pulled from live systems or standard references regarding this query:
     {data_context}
     CRITICAL RULES:
     - NEVER invent, estimate, interpolate, forecast, simulate, or hallucinate data.
-    - ONLY use values present in the verified datasets above.
+    - YOU MUST merge the datasets above into a single cohesive table if they share a time dimension (Year/Date).
+    - If multiple variables (e.g. Poverty, GDP, Unemployment) are provided, align them by Year.
     - If no verified dataset exists, return an empty dataset.
     - Do not create fictional historical observations.
-    - Do not create fictional GDP, inflation, unemployment, wage, or financial figures.
+    
     You MUST output a valid structured JSON adhering exactly to this format:
     {{
       "title": "Concise capitalized visual title",
@@ -2707,100 +2512,21 @@ def run_agent_query(user_query: str):
         {{ "key": "value1", "name": "Header 1 Legend Label", "type": "line" or "bar", "color": "navy" }},
         {{ "key": "value2", "name": "Header 2 Legend Label", "type": "line" or "bar", "color": "mint" }}
       ],
-      "chartData": [
-        {{ "label": "2020", "value1": 4.5, "value2": 8.2 }}
-      ]
+      "chartData": []
     }}
-    
-    Rules for mappings:
-    - In raw table rows ("data" array): value strings can be formatted as human-readable strings (e.g., "$1.2B" or "4.5%").
-    - CRITICAL TABLE ROW DISCIPLINE: In the raw table rows ("data" array), you MUST map and include up to 20 representative, chronologically spread or sequential observation rows (e.g. at least 15 to 25 data points if available in the source data) rather than short-cutting or truncating to just 2 or 3 cells, so the user can analyze dense historical columns in the UI. If the dataset has more than 20 items, sample/space up to 20 rows evenly from the beginning to the end.
-    - In "chartData" array: keys "value1", "value2" etc. correspond to values in "chartSeries". Crucially, "value1" etc. MUST be plain numbers (floats/integers, e.g. 4.5) to allow Recharts to plot them. Use "label" corresponding to primary X-axis (Year/Period/Date/Quarter).
-    - Ensure title and labels are descriptive.
-    
 
-    IMPORTANT DATA CLEANING RULES
-
+    DATA RULES:
     For economic datasets from BPS, BI, World Bank, IMF, FRED:
-
     NEVER expose these database fields:
-
     - id
     - created_at
     - source
     - country
-
-    Use only analytical fields:
-
-    - date
-    - value
-    - region
-    - indicator
-    - unit
-
-    When a dataset contains only one metric:
-
-    Example:
-
-    Year | HDI
-    2018 | 71.95
-    2019 | 72.44
-    2020 | 72.45
-
-    Example:
-
-    Year | GDP Current Price
-    2018 | 1960627.65
-    2019 | 2123153.71
-    2020 | 2082107.26
-
-    For chartData:
-    - ALWAYS use the 'value' column as value1
-    - NEVER use 'id' as chart value
-    - NEVER use created_at
-    - NEVER use database primary keys
-
-    For columns:
-    Return only user-facing analytical columns.
-
-    Bad:
-    ["id","source","country","indicator","date","value","unit","created_at","region"]
-
-    Good:
-    ["Year","GDP Current Price"]
-
-    Good:
-    ["Year","HDI"]
-
-    Good:
-    ["Year","Inflation"]
-
-    CRITICAL COLUMN MAPPING RULES
-
-    - Preserve original dataframe column names exactly.
-    - NEVER rename columns to value1, value2, value3 in the table output.
-    - The "columns" array must contain the actual economic variable names.
-    - The "data" array must preserve the original field names.
-
-    Example:
-
-    columns:
-    [
-    "Year",
-    "Gross domestic product",
-    "Exports",
-    "Imports"
-    ]
-
-    data:
-    [
-    {
-    "Year":"2024",
-    "Gross domestic product":"2.8",
-    "Exports":"3.6",
-    "Imports":"5.8"
-    }
-    ]
+    
+    Mapping:
+    - data[] array should have up to 20 rows.
+    - chartSeries[] MUST define keys that exist as numbers in chartData.
+    - chartData[] WILL BE AUTO-MERGED from dataframe, leave as empty array or minimal mapping.
     """
 
     final_structured_response = None
@@ -2911,10 +2637,83 @@ def run_agent_query(user_query: str):
         if unique_sources:
             res_json["sources"] = unique_sources
 
-        main_df = st.session_state.all_dfs[0].get("df")
-        if main_df is not None and isinstance(main_df, pd.DataFrame) and not main_df.empty:
-            print(f"DEBUG: Integrating live DataFrame of shape {main_df.shape} into response", file=sys.stderr)
-            res_json = merge_live_dataframe(res_json, main_df)
+        # Smart Merging Logic for Multiple DataFrames
+        if unique_dfs:
+            # Helper to extract year and clean metadata
+            def prepare_for_merge(df_item):
+                df = df_item["df"].copy()
+                # Find time column
+                time_col = next((c for c in df.columns if str(c).lower() in ['year', 'date', 'period', 'time']), df.columns[0])
+                
+                # Normalize time to Year string (e.g. 2020-02-01 -> 2020)
+                extracted_years = df[time_col].astype(str).str.extract(r'(\d{4})')[0]
+                if not extracted_years.isna().all():
+                    df[time_col] = extracted_years
+                
+                # Filter out metadata/system columns and handle generic names
+                exclude = ['id', 'created_at', 'source', 'country', 'region', 'unit', 'obs_status', 'decimal']
+                
+                # Smart Renaming for generic 'Value' or ISO columns based on dataset title
+                for c in df.columns:
+                    c_str = str(c)
+                    if c_str.lower() in ['value', 'primaryvalue', 'datavalue', 'obs_value', 'obs_val']:
+                        new_name = df_item['title'].replace('Stock - ', '').replace('FRED - ', '').replace('IMF - ', '').replace('WB - ', '').replace('BPS - ', '')
+                        # Remove bracketed codes if present e.g. " (PCPIPCH)"
+                        import re
+                        new_name = re.sub(r'\(.*?\)', '', new_name).strip()
+                        df = df.rename(columns={c: new_name})
+                    elif len(c_str) == 3 and c_str.isupper() and c_str != 'IDN':
+                        # Handle ISO codes like CHN, USA from IMF/WB
+                        source_prefix = df_item['title'].split(' - ')[0] if ' - ' in df_item['title'] else ""
+                        df = df.rename(columns={c: f"{c_str} {source_prefix}".strip()})
+                
+                # Clean technical column names (e.g. UNEMPLOYMENT_RATE_AUG -> Unemployment Rate Aug)
+                df.columns = [str(c).replace('_', ' ').title() if len(str(c)) > 10 else str(c) for c in df.columns]
+
+                cols_to_keep = [time_col] + [c for c in df.columns if str(c).lower() not in exclude and c != time_col]
+                df = df[cols_to_keep]
+                
+                # If multiple indicators in one DF (like BPS), pivot or rename to title
+                if 'indicator' in df.columns and 'value' in df.columns:
+                    df = df.pivot_table(index=time_col, columns='indicator', values='value', aggfunc='mean').reset_index()
+                
+                return df, time_col
+
+            # Process first DF
+            combined_df, base_time = prepare_for_merge(unique_dfs[0])
+            combined_df = combined_df.rename(columns={base_time: 'Year'})
+            
+            if len(unique_dfs) > 1:
+                try:
+                    for extra_item in unique_dfs[1:]:
+                        edf, e_time = prepare_for_merge(extra_item)
+                        # Ensure time col name matches join key
+                        e_time_final = next(c for c in edf.columns if c.lower() in [str(e_time).lower(), 'year'])
+                        edf = edf.rename(columns={e_time_final: 'Year'})
+                        combined_df = pd.merge(combined_df, edf, on='Year', how='outer')
+                    
+                    combined_df = combined_df.sort_values('Year', ascending=False).reset_index(drop=True)
+                    # Deduplicate years (collapse rows with same year)
+                    combined_df = combined_df.groupby('Year').first().reset_index().sort_values('Year', ascending=False)
+                    
+                    # Smart Trimming: Filter by years mentioned in user query (e.g. 2015-2024)
+                    import re
+                    query_years = [int(y) for y in re.findall(r'\b(19\d{2}|20\d{2})\b', user_query)]
+                    if query_years:
+                        min_y, max_y = min(query_years), max(query_years)
+                        combined_df['Year_int'] = pd.to_numeric(combined_df['Year'], errors='coerce')
+                        combined_df = combined_df[(combined_df['Year_int'] >= min_y) & (combined_df['Year_int'] <= max_y)]
+                        combined_df = combined_df.drop(columns=['Year_int'])
+                    
+                    # Clean NaN to empty string for tidier UI
+                    combined_df = combined_df.replace({np.nan: None})
+
+                except Exception as e:
+                    print(f"DEBUG Merge failed: {e}", file=sys.stderr)
+            
+            if not combined_df.empty:
+                print(f"DEBUG: Integrating Merged DataFrame of shape {combined_df.shape}", file=sys.stderr)
+                res_json = merge_live_dataframe(res_json, combined_df)
 
     return res_json
 
@@ -2988,11 +2787,13 @@ def merge_live_dataframe(res_json, df):
         
         # Now rebuild chartData based on chartSeries mappings
         chart_series_list = res_json.get("chartSeries", [])
-        if not chart_series_list:
-            numeric_cols = [c for c in df.columns if c != date_col and pd.api.types.is_numeric_dtype(df[c])]
-            if numeric_cols:
-                chart_series_list = [{"key": "value1", "name": str(numeric_cols[0]), "type": "line", "color": "navy"}]
-                res_json["chartSeries"] = chart_series_list
+        numeric_cols = [c for c in df.columns if c != date_col and pd.api.types.is_numeric_dtype(df[c])]
+        
+        # Auto-populate all numeric columns into chart if multiple are found
+        if len(numeric_cols) > 1:
+            colors = ["navy", "mint", "gold", "coral", "plum", "teal"]
+            chart_series_list = [{"key": f"value{i+1}", "name": str(col), "type": "line", "color": colors[i % len(colors)]} for i, col in enumerate(numeric_cols)]
+            res_json["chartSeries"] = chart_series_list
                 
         # For each chartSeries, find the best matching df column
         series_column_map = {}

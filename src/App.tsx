@@ -1848,15 +1848,28 @@ export default function App() {
                                     const value = row[col];
                                     const isYear = col.toLowerCase() === "year" || col.toLowerCase() === "period" || col.toLowerCase() === "date";
                                     return (
-                                      <td 
-                                        key={col} 
+                                      <td
+                                        key={col}
                                         className={`px-4 py-2 ${
-                                          isYear 
-                                            ? "font-semibold text-slate-900 dark:text-white" 
+                                          isYear
+                                            ? "font-semibold text-slate-900 dark:text-white"
                                             : "text-slate-600 dark:text-slate-300"
                                         }`}
                                       >
-                                        {value}
+                                        {typeof value === "string" &&
+                                        (value.startsWith("http://") ||
+                                          value.startsWith("https://")) ? (
+                                            <a
+                                              href={value}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-emerald-500 hover:underline font-medium"
+                                            >
+                                              View Paper ↗
+                                            </a>
+                                        ) : (
+                                            value
+                                        )}
                                       </td>
                                     );
                                   })}
