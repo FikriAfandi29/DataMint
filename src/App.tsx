@@ -462,7 +462,13 @@ export default function App() {
 
       if (error) throw error;
 
-      setDatasets(data || []);
+      const parsed = (data || []).map((row: any) => ({
+          id: row.id,
+          created_at: row.created_at,
+          ...(row.dataset || {})
+      }));
+
+      setDatasets(parsed);
     } catch (e) {
       console.error("Error loading datasets", e);
     }
@@ -727,6 +733,30 @@ export default function App() {
       fetchSavedQueries();
     } catch (e) {
       console.error("Error deleting query:", e);
+    }
+  };
+
+  // Delete all saved queries (Supabase Version)
+  const deleteAllSavedQueries = async () => {
+    try {
+      if (!currentUser) return;
+
+      const confirmed = window.confirm(
+        "Are you sure you want to delete all saved queries? This action cannot be undone."
+      );
+
+      if (!confirmed) return;
+
+      const { error } = await supabase!
+        .from("query_history")
+        .delete()
+        .eq("user_id", currentUser.id);
+
+      if (error) throw error;
+
+      fetchSavedQueries();
+    } catch (e) {
+      console.error("Error deleting all queries:", e);
     }
   };
 
@@ -2562,10 +2592,26 @@ export default function App() {
           {currentTab === "saved-queries" && (
             <div id="queries-tab" className="space-y-6">
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-xl shadow-xs">
-                <p className="text-xs text-slate-500 max-w-md mb-6">
-                  Catalog queries to run with automated interval scanning reports.
-                </p>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Saved Queries
+                    </h2>
 
+                    <p className="text-xs text-slate-500 mt-1">
+                      Catalog queries to run with automated interval scanning reports.
+                    </p>
+                  </div>
+
+                  {savedQueries.length > 0 && (
+                    <button
+                      onClick={deleteAllSavedQueries}
+                      className="px-3 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition"
+                    >
+                      Delete All
+                    </button>
+                  )}
+                </div>
                 {savedQueries.length === 0 ? (
                   <div className="p-12 text-center text-slate-400 border border-dashed rounded-xl border-slate-200 dark:border-slate-800">
                     <CheckSquare className="w-10 h-10 mx-auto opacity-30 mb-3" />

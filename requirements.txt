@@ -11,3 +11,4 @@ springernature-api-client
 groq
 openai>=1.30.0
 supabase
+sdmx1
