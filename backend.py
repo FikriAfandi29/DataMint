@@ -39,6 +39,93 @@ def clean_nan_values(obj):
     
     return obj
 
+def send_progress(step: int, message: str):
+    print(f"PROGRESS:{step}:{message}", file=sys.stderr, flush=True)
+
+def run_agent_query(user_query: str):
+    send_progress(0, "Query parsed — routing engine active")
+
+    try:
+        client = genai.Client(vertexai=True, project="gen-lang-client-0971794485", location="us-central1")
+    except Exception as e:
+        client = None
+
+    st.session_state.all_dfs = []
+
+    # ... semua routing flags dan deduplicate ...
+
+    send_progress(1, f"Sweeping {len(active_tools)} sources — routing tools ready")
+
+    # ... system_instruction, generate_content pertama, tool execution ...
+
+    data_found = st.session_state.all_dfs
+    print(f"DATASETS FOUND = {len(data_found)}", file=sys.stderr)
+
+    send_progress(2, f"Data acquired — {len(data_found)} dataset(s) found")
+
+    # ... schema_prompt ...
+
+    final_res = None
+    for model_name in GEMINI_MODELS:
+        try:
+            final_res = client.models.generate_content(
+                model=model_name, contents=schema_prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json")
+            )
+            break
+        except Exception as e:
+            print(f"DEBUG: Final JSON model '{model_name}' failed: {e}", file=sys.stderr)
+
+    # ✅ HARUS DI LUAR for loop — 4 spasi, sejajar dengan "final_res = None"
+    send_progress(3, "Normalizing data & building JSON schema")
+
+    if final_res:
+        print("===== GEMINI RAW JSON =====", file=sys.stderr)
+        print(final_res.text, file=sys.stderr)
+
+    try:
+        raw_text = final_res.text if final_res else None
+        if not raw_text:
+            raise ValueError("Empty response from Gemini")
+
+        raw_text = raw_text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+
+        res_json = json.loads(raw_text)
+
+        if isinstance(res_json, list):
+            res_json = res_json[0] if res_json else generate_smart_fallback_data(user_query)
+
+        if not isinstance(res_json, dict):
+            raise ValueError("Response bukan dict")
+
+        if "data" in res_json and isinstance(res_json["data"], list):
+            for row in res_json["data"]:
+                if isinstance(row, dict):
+                    for k, v in row.items():
+                        if isinstance(v, str):
+                            try:
+                                row[k] = float(v) if ('.' in v or 'e' in v.lower()) else int(v)
+                            except ValueError:
+                                pass
+
+    except Exception as e:
+        print(f"DEBUG: Failed to parse Gemini JSON: {e}", file=sys.stderr)
+        res_json = generate_smart_fallback_data(user_query)
+
+    if data_found and not data_found[0].get("df").empty:
+        res_json = merge_live_dataframe(res_json, data_found[0].get("df"))
+
+    res_json = clean_nan_values(res_json)
+
+    # ✅ HARUS DI LUAR semua try/except — 4 spasi
+    send_progress(4, "Building export package — complete")
+
+    return res_json
+
 def call_groq(prompt, model_name="openai/gpt-oss-120b"):
     from groq import Groq
     client = Groq(api_key=GROQ_API_KEY)
@@ -123,15 +210,41 @@ def run_agent_query(user_query: str):
     # ROUTING CERDAS: Memfilter API Berdasarkan Keyword Pertanyaan
     # ==============================================================
     query_lower = user_query.lower()
-    active_tools = []
 
     # Deteksi flag
-    is_indonesia = any(w in query_lower for w in ['indonesia', 'bps', 'bi', 'rupiah', 'pdrb', 'idn'])
-    is_gdp       = any(w in query_lower for w in ['gdp', 'pdb', 'gross domestic'])
-    is_stock     = any(w in query_lower for w in ['stock', 'saham', 'price', 'crypto', 'cash flow', 'sec', 'meta', 'aapl', 'ticker'])
-    is_academic  = any(w in query_lower for w in ['jurnal', 'paper', 'academic', 'elsevier', 'springer', 'literature'])
-    is_us        = any(w in query_lower for w in ['bea', 'nipa', 'united states', 'us gdp', 'american'])
-    is_ecb       = any(w in query_lower for w in ['ecb', 'eur', 'euro', 'exchange rate'])
+    is_indonesia    = any(w in query_lower for w in ['indonesia', 'bps', 'bi rate', 'rupiah', 'pdrb', 'idn', 'jawa', 'sumatera', 'kalimantan', 'sulawesi', 'papua', 'banten', 'aceh'])
+    is_pdrb         = any(w in query_lower for w in ['pdrb', 'grdp', 'gross regional', 'regional domestic product', 'produk domestik regional'])
+    is_gdp          = any(w in query_lower for w in ['gdp', 'pdb', 'gross domestic product'])
+    is_stock        = any(w in query_lower for w in ['stock', 'saham', 'share price', 'crypto', 'cash flow', 'sec', 'ticker', 'aapl', 'msft', 'googl', 'amzn', 'nvda', 'meta', 'tsla', 'nasdaq', 'nyse', 'equity'])
+    is_academic     = any(w in query_lower for w in ['jurnal', 'paper', 'academic', 'elsevier', 'springer', 'literature', 'research', 'journal', 'publication', 'citation', 'scholarly'])
+    is_us           = any(w in query_lower for w in ['bea', 'nipa', 'united states', 'us gdp', 'american economy', 'federal reserve', 'us economy', 'u.s.'])
+    is_ecb          = any(w in query_lower for w in ['ecb', 'european central bank', 'eur/usd', 'eurusd', 'euro exchange'])
+    is_exchange     = any(w in query_lower for w in ['exchange rate', 'forex', 'currency', 'fx rate', 'usd/', '/usd', 'gbp/', 'jpy/', 'cny/'])
+    is_unemployment = any(w in query_lower for w in ['unemployment', 'pengangguran', 'jobless', 'labor force', 'labour force', 'ilo', 'employment rate', 'tpak', 'tpt'])
+    is_inflation    = any(w in query_lower for w in ['inflation', 'inflasi', 'cpi', 'consumer price', 'price index', 'ihk'])
+    is_productivity = any(w in query_lower for w in ['productivity', 'gdp per hour', 'labor productivity', 'labour productivity', 'tfp', 'total factor'])
+    is_health       = any(w in query_lower for w in ['health spending', 'healthcare', 'life expectancy', 'mortality', 'health expenditure'])
+    is_trade        = any(w in query_lower for w in ['export', 'import', 'ekspor', 'impor', 'trade balance', 'neraca perdagangan', 'current account'])
+    is_industry     = any(w in query_lower for w in ['industry', 'industri', 'sector', 'sektor', 'by industry', 'manufacturing output'])
+    is_fred         = any(w in query_lower for w in ['fred', 'federal funds', 'fedfunds', 'treasury', 't-bill', 'libor', 'sofr', 'sp500', 's&p'])
+    is_oecd         = any(w in query_lower for w in ['oecd', 'developed countries', 'g7', 'g20 countries'])
+    is_imf          = any(w in query_lower for w in ['imf', 'international monetary fund', 'weo', 'world economic outlook'])
+    is_commodity    = any(w in query_lower for w in ['oil', 'gold', 'crude', 'commodity', 'brent', 'wti', 'natural gas', 'coal', 'copper'])
+    is_population   = any(w in query_lower for w in ['population', 'penduduk', 'demographic', 'birth rate', 'fertility', 'demografi'])
+    is_poverty      = any(w in query_lower for w in ['poverty', 'kemiskinan', 'miskin'])
+    is_gini         = any(w in query_lower for w in ['gini', 'inequality', 'ketimpangan'])
+    is_hdi          = any(w in query_lower for w in ['hdi', 'ipm', 'human development'])
+    is_wage         = any(w in query_lower for w in ['wage', 'upah', 'ump', 'umr', 'umk', 'gaji', 'minimum wage', 'upah minimum'])
+    is_bps_direct   = any(w in query_lower for w in ['bps', 'statistik indonesia', 'sensus', 'susenas', 'sakernas'])
+    is_news         = any(w in query_lower for w in ['news', 'berita', 'headline', 'artikel', 'terbaru'])
+
+    # Flag gabungan untuk BPS dynamic (indikator yang ada di fetch_bps_dynamic_data)
+    is_bps_dynamic  = is_poverty or is_gini or is_hdi or is_wage or (is_indonesia and is_unemployment)
+
+    # ============================================================
+    # ROUTING BERDASARKAN FLAG
+    # ============================================================
+    active_tools = []
 
     if is_stock:
         active_tools.extend([fetch_stock_data, fetch_sec_cashflow, fetch_news_data])
@@ -139,30 +252,95 @@ def run_agent_query(user_query: str):
     elif is_academic:
         active_tools.extend([fetch_elsevier_literature, fetch_springer_literature, fetch_nasa_small_body_data])
 
+    elif is_indonesia and is_bps_dynamic:
+        # Semua indikator BPS dinamis (HDI, poverty, gini, wage, unemployment)
+        # → fetch_bps_dynamic_data sebagai tool utama
+        active_tools.extend([fetch_bps_dynamic_data])
+
+    elif is_bps_direct and is_indonesia:
+        active_tools.extend([fetch_bps_dynamic_data])
+
     elif is_indonesia and is_gdp:
-        # GDP Indonesia → World Bank dulu, Supabase sebagai fallback
-        active_tools.extend([fetch_macro_data, fetch_supabase_indicator, fetch_imf_data])
+        active_tools.extend([fetch_bps_dynamic_data, fetch_macro_data])
+
+    # Di routing Indonesia:
+    elif is_indonesia and is_pdrb:
+        active_tools.extend([fetch_bps_dynamic_data, fetch_supabase_indicator])
+
+    elif is_indonesia and is_inflation:
+        active_tools.extend([fetch_bps_dynamic_data, fetch_macro_data])
 
     elif is_indonesia:
-        # Indikator Indonesia non-GDP → Supabase/BPS dulu
-        active_tools.extend([fetch_supabase_indicator, fetch_macro_data, fetch_imf_data])
+        active_tools.extend([fetch_supabase_indicator, fetch_macro_data, fetch_bps_data, fetch_bps_dynamic_data, fetch_imf_data])
+
+    elif is_unemployment:
+        active_tools.extend([fetch_ilo_unemployment_data, fetch_macro_data])
+
+    elif is_poverty or is_gini:
+        # Poverty/Gini non-Indonesia → World Bank
+        active_tools.extend([fetch_macro_data, fetch_imf_data])
+
+    elif is_productivity:
+        active_tools.extend([fetch_oecd_data, fetch_macro_data])
+
+    elif is_health:
+        active_tools.extend([fetch_oecd_data, fetch_macro_data])
+
+    elif is_oecd:
+        active_tools.extend([fetch_oecd_data, fetch_macro_data, fetch_imf_data])
+
+    elif is_us and is_industry:
+        active_tools.extend([fetch_bea_industry_data, fetch_bea_nipa_data])
 
     elif is_us:
         active_tools.extend([fetch_bea_nipa_data, fetch_bea_industry_data, fetch_fred_data, fetch_macro_data])
 
-    elif is_gdp:
-        # GDP negara lain
-        active_tools.extend([fetch_macro_data, fetch_imf_data, fetch_fred_data])
+    elif is_fred:
+        active_tools.extend([fetch_fred_data, fetch_macro_data])
+
+    elif is_imf and is_inflation:
+        active_tools.extend([fetch_imf_data, fetch_macro_data])
+
+    elif is_imf:
+        active_tools.extend([fetch_imf_data, fetch_macro_data, fetch_fred_data])
 
     elif is_ecb:
         active_tools.extend([fetch_ecb_data, fetch_macro_data])
 
-    # Tambah sebelum blok else
-    elif any(w in query_lower for w in ['unemployment', 'pengangguran', 'jobless', 'labor force', 'ilo']):
-        active_tools.extend([fetch_ilo_unemployment_data, fetch_macro_data])
+    elif is_exchange:
+        active_tools.extend([fetch_ecb_data, fetch_fred_data, fetch_macro_data])
+
+    elif is_trade:
+        active_tools.extend([fetch_macro_data, fetch_imf_data, fetch_fred_data])
+
+    elif is_industry:
+        active_tools.extend([fetch_macro_data, fetch_oecd_data, fetch_imf_data])
+
+    elif is_inflation:
+        active_tools.extend([fetch_imf_data, fetch_macro_data, fetch_fred_data])
+
+    elif is_gdp:
+        active_tools.extend([fetch_macro_data, fetch_imf_data, fetch_fred_data])
+
+    elif is_population:
+        active_tools.extend([fetch_macro_data, fetch_imf_data])
+
+    elif is_wage:
+        active_tools.extend([fetch_macro_data, fetch_ilo_unemployment_data])
+
+    elif is_commodity:
+        active_tools.extend([fetch_fred_data, fetch_stock_data])
+
+    elif is_news:
+        active_tools.extend([fetch_news_data])
 
     else:
         active_tools.extend([fetch_macro_data, fetch_fred_data, fetch_imf_data, fetch_adb_macro_data, fetch_eurostat_macro_data])
+
+    # Deduplicate sambil jaga urutan
+    seen = set()
+    active_tools = [f for f in active_tools if not (f.__name__ in seen or seen.add(f.__name__))]
+    
 
     today_date = datetime.now().strftime("%B %d, %Y")
     
@@ -178,7 +356,8 @@ def run_agent_query(user_query: str):
     Example: "last 5 years" → start_year={datetime.now().year - 5}, end_year={datetime.now().year}
     3. FORCED MAPPING:
     - Indonesia GDP/macro        → fetch_macro_data(indicator='GDP', country='Indonesia')
-    - Indonesia regional/BPS     → fetch_supabase_indicator
+    - Indonesia BPS official data → fetch_bps_dynamic_data(indicator='inflation', domain='0000')
+    - Indonesia regional BPS      → fetch_bps_dynamic_data(indicator='poverty', region='Jawa Barat')
     - US GDP/NIPA                → fetch_bea_nipa_data(table_name='T10105')
     - US GDP by industry         → fetch_bea_industry_data(table_id='1')
     - Stock/crypto prices        → fetch_stock_data
@@ -190,7 +369,13 @@ def run_agent_query(user_query: str):
     - CPI multi-country          → fetch_imf_data(indicator_code='CPI')
     - OECD productivity/health   → fetch_oecd_data
     - General macro any country  → fetch_macro_data
+    - Labor productivity / GDP per hour → fetch_oecd_data(indicator='productivity', countries='KOR')
+    - GDP per capita (proxy productivity) → fetch_macro_data(indicator='gdp per capita', country='South Korea')
     4. OUTPUT: Return ONLY one function call. Stop immediately after.
+    - Stock single column    → fetch_stock_data(ticker="AAPL", columns="close", period="5y")
+    - Stock multi close      → fetch_stock_data(ticker="META,AAPL,NVDA", columns="close", start_year=2023)
+    - Stock all OHLCV        → fetch_stock_data(ticker="TSLA", period="1y")
+    - Stock volume only      → fetch_stock_data(ticker="MSFT", columns="volume", period="2y")
     """
 
     response = None

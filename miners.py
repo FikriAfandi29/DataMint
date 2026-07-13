@@ -27,21 +27,158 @@ def _filter_by_year(df, year_col, start_year=None, end_year=None, default_tail=1
     except Exception:
         return df.tail(default_tail).reset_index(drop=True)
 
-def fetch_stock_data(ticker: str, start_date: str = None, end_date: str = None, period: str = "1y"):
+def fetch_stock_data(
+    ticker: str,
+    start_date: str = None,
+    end_date: str = None,
+    period: str = "1y",
+    columns: str = None,
+    start_year: int = None,
+    end_year: int = None,
+):
+    """
+    Fetch stock price data from Yahoo Finance.
+
+    ticker:
+        Single: "AAPL"
+        Multiple (comma-separated): "AAPL,MSFT,NVDA,META"
+
+    columns:
+        Which columns to return. Default: all available.
+        Options: "close", "open", "high", "low", "volume", "adjclose"
+        Multiple: "close,volume" or "high,low,close"
+        If not specified, returns all columns.
+
+    period:
+        Time period if no date specified.
+        Options: "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"
+
+    start_date / end_date:
+        ISO format: "2023-01-01"
+
+    start_year / end_year:
+        Shorthand year filter: start_year=2022, end_year=2024
+
+    Examples:
+        fetch_stock_data(ticker="AAPL", columns="close", period="5y")
+        fetch_stock_data(ticker="META,AAPL,NVDA", columns="close,volume", start_year=2023)
+        fetch_stock_data(ticker="TSLA", columns="high,low,close,volume", start_date="2024-01-01")
+        fetch_stock_data(ticker="MSFT", period="max")
+    """
+    import sys
+
+    # Konversi start_year/end_year → start_date/end_date
+    if start_year and not start_date:
+        start_date = f"{start_year}-01-01"
+    if end_year and not end_date:
+        end_date = f"{end_year}-12-31"
+
+    # Mapping nama kolom yang friendly
+    COLUMN_ALIASES = {
+        'close': 'Close',
+        'open': 'Open',
+        'high': 'High',
+        'low': 'Low',
+        'volume': 'Volume',
+        'adjclose': 'Adj Close',
+        'adj close': 'Adj Close',
+        'adjusted': 'Adj Close',
+    }
+
+    # Parse kolom yang diminta
+    requested_cols = None
+    if columns:
+        requested_cols = [
+            COLUMN_ALIASES.get(c.strip().lower(), c.strip().title())
+            for c in columns.replace('+', ',').split(',')
+            if c.strip()
+        ]
+
+    # Parse multi-ticker
+    raw_tickers = [t.strip().upper() for t in ticker.replace('+', ',').split(',') if t.strip()]
+    is_multi = len(raw_tickers) > 1
+    ticker_str = ' '.join(raw_tickers) if is_multi else raw_tickers[0]
+
+    print(f"DEBUG STOCK: tickers={raw_tickers}, cols={requested_cols}, period={period}, start={start_date}, end={end_date}", file=sys.stderr)
+
     try:
+        # Download data
         if start_date and end_date:
-            data = yf.download(ticker, start=start_date, end=end_date)
+            data = yf.download(ticker_str, start=start_date, end=end_date, auto_adjust=True)
+        elif start_date:
+            data = yf.download(ticker_str, start=start_date, auto_adjust=True)
         else:
-            data = yf.download(ticker, period=period)
+            data = yf.download(ticker_str, period=period, auto_adjust=True)
+
+        if data.empty:
+            return f"No data returned for ticker(s): {ticker_str}"
+
         data = data.reset_index()
+
+        # Handle MultiIndex columns (multi-ticker download)
         if isinstance(data.columns, pd.MultiIndex):
-            data.columns = [col[0] for col in data.columns]
-            
-        st.session_state.all_dfs.append({"title": f"Stock - {ticker}", "df": data})
-        recent_data = data.tail(5).to_string()
-        return f"Successfully fetched data for {ticker}.\n{recent_data}"
+            if is_multi:
+                # Format: (OHLCV, TICKER) → pivot menjadi Date + Close_AAPL + Close_MSFT dst
+                data.columns = [
+                    f"{col[0]}_{col[1]}" if col[1] else col[0]
+                    for col in data.columns
+                ]
+            else:
+                data.columns = [col[0] if isinstance(col, tuple) else col for col in data.columns]
+
+        # Rename Date column kalau perlu
+        date_col = next((c for c in data.columns if str(c).lower() in ['date', 'datetime', 'index']), None)
+        if date_col and date_col != 'Date':
+            data = data.rename(columns={date_col: 'Date'})
+
+        # Konversi Date ke string
+        if 'Date' in data.columns:
+            data['Date'] = data['Date'].astype(str).str[:10]
+
+        # Filter kolom kalau diminta (single ticker only)
+        if requested_cols and not is_multi:
+            available = [c for c in requested_cols if c in data.columns]
+            missing = [c for c in requested_cols if c not in data.columns]
+            if missing:
+                print(f"DEBUG STOCK: columns not found: {missing}, available: {list(data.columns)}", file=sys.stderr)
+            if available:
+                keep_cols = ['Date'] + available if 'Date' in data.columns else available
+                data = data[[c for c in keep_cols if c in data.columns]]
+
+        # Untuk multi-ticker + specific column (misal hanya "close")
+        if requested_cols and is_multi:
+            keep = ['Date'] if 'Date' in data.columns else []
+            for req in requested_cols:
+                matching = [c for c in data.columns if c.startswith(f"{req}_") or c == req]
+                keep.extend(matching)
+            if keep:
+                data = data[[c for c in keep if c in data.columns]]
+
+        # Drop baris semua NaN
+        data = data.dropna(how='all').reset_index(drop=True)
+
+        if data.empty:
+            return f"Data empty after filtering for {ticker_str}"
+
+        # Buat title yang informatif
+        col_desc = f" [{', '.join(requested_cols)}]" if requested_cols else ""
+        title = f"Stock - {', '.join(raw_tickers)}{col_desc}"
+
+        st.session_state.all_dfs.append({"title": title, "df": data})
+
+        print(f"DEBUG STOCK: {len(data)} rows, columns: {list(data.columns)}", file=sys.stderr)
+
+        return (
+            f"Successfully fetched stock data for {', '.join(raw_tickers)}.\n"
+            f"Columns: {list(data.columns)}\n"
+            f"Period: {data['Date'].iloc[0] if 'Date' in data.columns else 'N/A'} "
+            f"to {data['Date'].iloc[-1] if 'Date' in data.columns else 'N/A'}\n"
+            f"{data.tail(3).to_string(index=False)}"
+        )
+
     except Exception as e:
-        return f"Failed to fetch stock data for {ticker}. Error: {e}"
+        print(f"DEBUG STOCK ERROR: {e}", file=sys.stderr)
+        return f"Failed to fetch stock data for {ticker_str}. Error: {e}"
 
 def fetch_macro_data(indicator: str, country: str, start_year: int = None, end_year: int = None, recent_years: int = 10):
     import requests
@@ -54,20 +191,55 @@ def fetch_macro_data(indicator: str, country: str, start_year: int = None, end_y
     ind_lower = indicator.lower()
     if 'gdp' in ind_lower and 'growth' not in ind_lower and 'per capita' not in ind_lower:
         wb_indicator = 'NY.GDP.MKTP.CD'
-    elif 'growth' in ind_lower:
-        wb_indicator = 'NY.GDP.MKTP.KD.ZG'
-    elif 'gdp per capita' in ind_lower or 'gdp/capita' in ind_lower:
+    # Di bagian mapping indikator fetch_macro_data
+    elif 'productivity' in ind_lower or 'gdp per hour' in ind_lower:
+        wb_indicator = 'NY.GDP.PCAP.KD'  # GDP per capita constant (proxy productivity)
+    elif 'gdp per capita' in ind_lower or 'per capita' in ind_lower:
         wb_indicator = 'NY.GDP.PCAP.CD'
-    elif 'inflation' in ind_lower or 'cpi' in ind_lower:
-        wb_indicator = 'FP.CPI.TOTL.ZG'
-    elif 'unemployment' in ind_lower:
-        wb_indicator = 'SL.UEM.TOTL.ZS'
+    elif 'trade' in ind_lower or 'export' in ind_lower:
+        wb_indicator = 'NE.TRD.GNFS.ZS'
     elif 'fdi' in ind_lower:
         wb_indicator = 'BX.KLT.DINV.WD.GD.ZS'
-    elif 'population' in ind_lower:
-        wb_indicator = 'SP.POP.TOTL'
-    elif 'trade' in ind_lower:
-        wb_indicator = 'NE.TRD.GNFS.ZS'
+    elif 'debt' in ind_lower:
+        wb_indicator = 'GC.DOD.TOTL.GD.ZS'
+    elif 'tax' in ind_lower or 'revenue' in ind_lower:
+        wb_indicator = 'GC.TAX.TOTL.GD.ZS'
+    elif 'interest rate' in ind_lower:
+        wb_indicator = 'FR.INR.RINR'
+    elif 'current account' in ind_lower:
+        wb_indicator = 'BN.CAB.XOKA.GD.ZS'
+    elif 'military' in ind_lower or 'defense' in ind_lower:
+        wb_indicator = 'MS.MIL.XPND.GD.ZS'
+    elif 'co2' in ind_lower or 'emission' in ind_lower:
+        wb_indicator = 'EN.ATM.CO2E.PC'
+    elif 'energy' in ind_lower:
+        wb_indicator = 'EG.USE.PCAP.KG.OE'
+    elif 'internet' in ind_lower or 'digital' in ind_lower:
+        wb_indicator = 'IT.NET.USER.ZS'
+    elif 'electricity' in ind_lower:
+        wb_indicator = 'EG.ELC.ACCS.ZS'
+    elif 'life expectancy' in ind_lower:
+        wb_indicator = 'SP.DYN.LE00.IN'
+    elif 'fertility' in ind_lower or 'birth rate' in ind_lower:
+        wb_indicator = 'SP.DYN.CBRT.IN'
+    elif 'mortality' in ind_lower or 'death rate' in ind_lower:
+        wb_indicator = 'SP.DYN.CDRT.IN'
+    elif 'education' in ind_lower or 'school' in ind_lower:
+        wb_indicator = 'SE.PRM.ENRR'
+    elif 'literacy' in ind_lower:
+        wb_indicator = 'SE.ADT.LITR.ZS'
+    elif 'health' in ind_lower or 'healthcare' in ind_lower:
+        wb_indicator = 'SH.XPD.CHEX.GD.ZS'
+    elif 'manufacturing' in ind_lower or 'industry' in ind_lower:
+        wb_indicator = 'NV.IND.MANF.ZS'
+    elif 'agriculture' in ind_lower or 'farming' in ind_lower:
+        wb_indicator = 'NV.AGR.TOTL.ZS'
+    elif 'services' in ind_lower:
+        wb_indicator = 'NV.SRV.TOTL.ZS'
+    elif 'urban' in ind_lower or 'urbanization' in ind_lower:
+        wb_indicator = 'SP.URB.TOTL.IN.ZS'
+    elif 'remittance' in ind_lower:
+        wb_indicator = 'BX.TRF.PWKR.DT.GD.ZS'
     else:
         wb_indicator = indicator  # gunakan input asli
 
@@ -263,69 +435,247 @@ def fetch_news_data(keyword: str, max_results: int = 15):
     except Exception as e:
         return f"Error gathering news: {e}"
 
-def fetch_imf_data(indicator_code: str, country_codes: str, start_year: int = 2020):
+def fetch_imf_data(indicator_code: str, country_codes: str, start_year: int = 2015):
+    """
+    Fetch macroeconomic data from the IMF SDMX API.
+    
+    country_codes:
+        ISO 3-letter codes separated by comma or plus.
+        Examples: "USA,GBR,CHN" or "IDN+MYS+THA"
+
+    indicator_code:
+        Any IMF indicator. Common ones:
+        - 'CPI'          = Consumer Price Index (monthly)
+        - 'NGDP_RPCH'    = GDP Growth Rate (annual)
+        - 'NGDPD'        = GDP Current Prices USD (annual)
+        - 'LUR'          = Unemployment Rate (annual)
+        - 'PCPIPCH'      = Inflation Rate % change (annual)
+        - 'BCA_NGDPD'    = Current Account % GDP (annual)
+        - 'GGXWDG_NGDP'  = Government Debt % GDP (annual)
+        - 'GGX_NGDP'     = Government Expenditure % GDP (annual)
+        - 'LP'           = Population (annual)
+        - 'GGXCNL_NGDP'  = Fiscal Balance % GDP (annual)
+        - 'PPPGDP'       = GDP PPP (annual)
+        - 'NGSD_NGDP'    = Gross National Savings % GDP (annual)
+        - 'NID_NGDP'     = Investment % GDP (annual)
+        - 'TM_RPCH'      = Import Volume % change (annual)
+        - 'TX_RPCH'      = Export Volume % change (annual)
+        - 'FPOLM_PA'     = Policy Interest Rate (monthly)
+
+    If unsure, use the closest match from the list above.
+    """
+    import sdmx
+    import sys
+    import pandas as pd
+
+    # Mapping ISO-2 → ISO-3
+    iso2_to_iso3 = {
+        'GB': 'GBR', 'UK': 'GBR', 'CN': 'CHN', 'IN': 'IND',
+        'US': 'USA', 'JP': 'JPN', 'ID': 'IDN', 'SG': 'SGP',
+        'MY': 'MYS', 'TH': 'THA', 'VN': 'VNM', 'PH': 'PHL',
+        'AU': 'AUS', 'DE': 'DEU', 'FR': 'FRA', 'IT': 'ITA',
+        'ES': 'ESP', 'KR': 'KOR', 'BR': 'BRA', 'RU': 'RUS',
+        'ZA': 'ZAF', 'MX': 'MEX', 'CA': 'CAN', 'SA': 'SAU',
+        'TR': 'TUR', 'NG': 'NGA', 'EG': 'EGY', 'AR': 'ARG',
+        'CL': 'CHL', 'CO': 'COL', 'PE': 'PER', 'NL': 'NLD',
+        'SE': 'SWE', 'NO': 'NOR', 'DK': 'DNK', 'FI': 'FIN',
+        'CH': 'CHE', 'AT': 'AUT', 'BE': 'BEL', 'HU': 'HUN',
+    }
+
+    # Normalize country codes
+    raw_countries = [
+        c.strip().upper()
+        for c in country_codes.replace('+', ',').replace('/', ',').split(',')
+        if c.strip()
+    ]
+    countries = [iso2_to_iso3.get(c, c) for c in raw_countries]
+    country_str = '+'.join(countries)
+
+    ind_upper = indicator_code.upper().strip()
+
+    # ==============================================================
+    # DATASET ROUTING TABLE
+    # Setiap indicator dipetakan ke dataset + key format yang tepat
+    # ==============================================================
+    
+    # CPI dataset (bulanan, format berbeda)
+    CPI_INDICATORS = {'CPI'}
+    
+    # IFS dataset (International Financial Statistics) - bulanan/kuartalan
+    IFS_INDICATORS = {
+        'FPOLM_PA',     # Policy rate
+        'FAIP_PA',      # Interest rate
+        'ENDA_XDC_USD_RATE',  # Exchange rate
+        'EREER_IX',     # Real effective exchange rate
+        'AIP_PC_CP_A_PT', # CPI (IFS version)
+    }
+    
+    # WEO dataset (World Economic Outlook) - tahunan, paling lengkap
+    WEO_INDICATORS = {
+        'NGDP_RPCH',    # GDP growth
+        'NGDPD',        # GDP USD
+        'NGDP',         # GDP local currency
+        'PPPGDP',       # GDP PPP
+        'PCPIPCH',      # Inflation
+        'LUR',          # Unemployment
+        'BCA_NGDPD',    # Current account % GDP
+        'GGXWDG_NGDP',  # Government debt % GDP
+        'GGXWDG_GDP',   # Government debt % GDP (alias)
+        'GGX_NGDP',     # Government expenditure % GDP
+        'GGXCNL_NGDP',  # Fiscal balance % GDP
+        'NGSD_NGDP',    # Gross national savings % GDP
+        'NID_NGDP',     # Investment % GDP
+        'TM_RPCH',      # Import volume change
+        'TX_RPCH',      # Export volume change
+        'LP',           # Population
+        'GGXONLB_NGDP', # Primary balance % GDP
+        'GGXCNL',       # Net lending/borrowing
+    }
+
     try:
-        import sdmx
-        import sys
-
-        # Normalisasi country_codes → list ['BRA', 'CHL', 'COL']
-        countries = [
-            c.strip().upper()
-            for c in country_codes.replace('+', '/').replace(',', '/').split('/')
-            if c.strip()
-        ]
-
-        # Build key sesuai format IMF SDMX
-        ind_upper = indicator_code.upper()
-
-        if ind_upper == 'CPI':
-            series = '_T.IX.M'
-            key = f"{'+'.join(countries)}.CPI.{series}"
-            dataset = 'CPI'
-            time_format = '%Y-M%m'
-        elif ind_upper in ['GDP', 'WEO']:
-            series = '_T.NGDP_RPCH.A'
-            key = f"{'+'.join(countries)}.WEO.{series}"
-            dataset = 'WEO'
-            time_format = '%Y'
-        else:
-            # Generic fallback
-            key = f"{'+'.join(countries)}.{ind_upper}"
-            dataset = ind_upper
-            time_format = '%Y'
-
-        print(f"DEBUG IMF KEY = {key}, DATASET = {dataset}", file=sys.stderr)
-
         IMF_DATA = sdmx.Client('IMF_DATA')
-        data_msg = IMF_DATA.data(dataset, key=key, params={'startPeriod': int(start_year)})
 
-        df = sdmx.to_pandas(data_msg).reset_index()
+        # ============================================================
+        # STRATEGY 1: CPI Dataset (format khusus)
+        # ============================================================
+        if ind_upper in CPI_INDICATORS:
+            dataset = 'CPI'
+            key = f"{country_str}.CPI._T.IX.M"
+            time_format = '%Y-M%m'
+            freq_label = 'Monthly'
+
+            print(f"DEBUG IMF [CPI]: key={key}", file=sys.stderr)
+            data_msg = IMF_DATA.data(dataset, key=key, params={'startPeriod': int(start_year)})
+            df = sdmx.to_pandas(data_msg).reset_index()
+
+        # ============================================================
+        # STRATEGY 2: WEO Dataset (annual, paling banyak indikator)
+        # ============================================================
+        elif ind_upper in WEO_INDICATORS or ind_upper not in IFS_INDICATORS:
+            dataset = 'WEO'
+            key = f"{country_str}.{ind_upper}.A"
+            time_format = '%Y'
+            freq_label = 'Annual'
+
+            print(f"DEBUG IMF [WEO]: key={key}", file=sys.stderr)
+            try:
+                data_msg = IMF_DATA.data(dataset, key=key, params={'startPeriod': int(start_year)})
+                df = sdmx.to_pandas(data_msg).reset_index()
+            except Exception as weo_err:
+                print(f"DEBUG IMF WEO failed: {weo_err}, trying IFS...", file=sys.stderr)
+                # Fallback ke IFS kalau WEO gagal
+                dataset = 'IFS'
+                key = f"{country_str}.A.{ind_upper}"
+                data_msg = IMF_DATA.data(dataset, key=key, params={'startPeriod': int(start_year)})
+                df = sdmx.to_pandas(data_msg).reset_index()
+
+        # ============================================================
+        # STRATEGY 3: IFS Dataset (bulanan/kuartalan)
+        # ============================================================
+        else:
+            dataset = 'IFS'
+            # IFS format: COUNTRY.FREQ.INDICATOR
+            freq_code = 'M'  # Monthly default untuk IFS
+            key = f"{country_str}.{freq_code}.{ind_upper}"
+            time_format = '%Y-M%m'
+            freq_label = 'Monthly'
+
+            print(f"DEBUG IMF [IFS]: key={key}", file=sys.stderr)
+            data_msg = IMF_DATA.data(dataset, key=key, params={'startPeriod': int(start_year)})
+            df = sdmx.to_pandas(data_msg).reset_index()
 
         if df.empty:
-            return f"IMF returned no data for key '{key}'"
+            return f"IMF returned no data for indicator '{ind_upper}', countries '{country_str}'"
 
-        # Pivot: index=TIME_PERIOD, columns=COUNTRY
-        time_col = 'TIME_PERIOD'
-        country_col = 'COUNTRY' if 'COUNTRY' in df.columns else df.columns[1]
+        print(f"DEBUG IMF: {len(df)} rows, columns={df.columns.tolist()}", file=sys.stderr)
+
+        # ============================================================
+        # PIVOT: Selalu index=waktu, columns=negara
+        # ============================================================
+        time_col = next((c for c in df.columns if 'TIME' in str(c).upper() or 'PERIOD' in str(c).upper()), df.columns[0])
         value_col = 'value' if 'value' in df.columns else df.columns[-1]
 
-        pivot = df.set_index([time_col, country_col])[value_col].unstack()
-        pivot.index = pd.to_datetime(pivot.index, format=time_format)
-        pivot = pivot.reset_index().rename(columns={time_col: 'Date'})
+        # Cari kolom negara
+        country_col = None
+        for candidate in ['COUNTRY', 'REF_AREA', 'COUNTRY_CODE']:
+            if candidate in df.columns:
+                country_col = candidate
+                break
+        if country_col is None:
+            # Cari kolom yang isinya mirip kode negara
+            for col in df.columns:
+                if df[col].astype(str).str.len().median() == 3:
+                    country_col = col
+                    break
+
+        if country_col and len(countries) > 1:
+            # Multi country → pivot
+            pivot = (
+                df.set_index([time_col, country_col])[value_col]
+                .unstack()
+                .reset_index()
+                .rename(columns={time_col: 'Date'})
+            )
+        else:
+            # Single country
+            pivot = df[[time_col, value_col]].rename(
+                columns={time_col: 'Date', value_col: countries[0] if countries else 'Value'}
+            )
+
         pivot.columns.name = None
 
-        st.session_state.all_dfs.append({
-            "title": f"IMF {dataset} - {'+'.join(countries)}",
-            "df": pivot
-        })
+        # Filter tahun
+        try:
+            pivot['Date'] = pd.to_datetime(pivot['Date'], format=time_format)
+            if start_year:
+                pivot = pivot[pivot['Date'].dt.year >= int(start_year)]
+        except Exception:
+            pass
 
-        return f"Successfully retrieved IMF {dataset} data.\n{pivot.tail(5).to_string(index=False)}"
+        pivot = pivot.sort_values('Date').reset_index(drop=True)
+
+        title = f"IMF {dataset} - {ind_upper} ({country_str})"
+        st.session_state.all_dfs.append({"title": title, "df": pivot})
+
+        return (
+            f"Successfully retrieved IMF {dataset}: {ind_upper}\n"
+            f"Countries: {country_str} | Frequency: {freq_label} | Rows: {len(pivot)}\n"
+            f"{pivot.tail(5).to_string(index=False)}"
+        )
 
     except ImportError:
         return "Error: sdmx1 not installed. Run: pip install sdmx1"
     except Exception as e:
         print(f"DEBUG IMF ERROR: {e}", file=sys.stderr)
-        return f"Error fetching IMF data: {str(e)}"
+
+        # ============================================================
+        # LAST RESORT: Coba brute force semua dataset
+        # ============================================================
+        print(f"DEBUG IMF: Trying brute force fallback...", file=sys.stderr)
+        for fallback_dataset in ['WEO', 'IFS', 'CPI', 'PCPS', 'GFSR']:
+            for freq in ['A', 'Q', 'M']:
+                try:
+                    key_attempt = f"{country_str}.{ind_upper}.{freq}"
+                    data_msg = IMF_DATA.data(
+                        fallback_dataset,
+                        key=key_attempt,
+                        params={'startPeriod': int(start_year)}
+                    )
+                    df_attempt = sdmx.to_pandas(data_msg).reset_index()
+                    if not df_attempt.empty:
+                        print(f"DEBUG IMF FALLBACK HIT: dataset={fallback_dataset}, key={key_attempt}", file=sys.stderr)
+                        time_col = df_attempt.columns[0]
+                        val_col = df_attempt.columns[-1]
+                        df_clean = df_attempt[[time_col, val_col]].rename(
+                            columns={time_col: 'Date', val_col: 'Value'}
+                        )
+                        title = f"IMF {fallback_dataset} - {ind_upper}"
+                        st.session_state.all_dfs.append({"title": title, "df": df_clean})
+                        return f"Successfully retrieved IMF {fallback_dataset} data for {ind_upper}.\n{df_clean.tail(5).to_string(index=False)}"
+                except Exception:
+                    continue
+
+        return f"Error fetching IMF data for '{ind_upper}': {str(e)}"
 
 def fetch_ilo_unemployment_data(country_codes: str, start_year: str = "2010", frequency: str = "A", age_group: str = "total"):
     import requests
@@ -1337,3 +1687,604 @@ def fetch_supabase_indicator(
         import traceback
         traceback.print_exc()
         return f"Supabase Error: {e}"
+
+def fetch_bps_dynamic_data(
+    indicator: str,
+    region: str = None,
+    start_year: int = None,
+    end_year: int = None,
+):
+    """
+    Fetch official BPS Indonesia data using dynamic table API.
+    
+    IMPORTANT: Use this function for ALL Indonesian regional/provincial data including:
+    - PDRB/GRDP (Gross Regional Domestic Product) by province
+    - HDI/IPM (Human Development Index) by province
+    - UNEMPLOYMENT/TPT (Unemployment rate) by province
+    - LFPR/TPAK (Labor Force Participation Rate) by province
+    - POVERTY/KEMISKINAN (Poverty rate) by province
+    - GINI/GINI_RATIO (Gini ratio) by province
+    - MINIMUM_WAGE/UMP/UMR (Provincial minimum wage)
+
+    indicator:
+        Choose from:
+        - 'PDRB' or 'GRDP' or 'GROSS REGIONAL DOMESTIC PRODUCT' = GRDP per capita by province (2015-2025
+        - 'HDI' or 'IPM' or 'HUMAN DEVELOPMENT'                  = HDI by province
+        - 'UNEMPLOYMENT' or 'TPT'                                 = Unemployment rate by province
+        - 'LFPR' or 'TPAK' or 'LABOR FORCE'                      = Labor Force Participation Rate by province
+        - 'POVERTY' or 'KEMISKINAN'                               = Poverty rate by province
+        - 'GINI' or 'GINI_RATIO' or 'INEQUALITY'                 = Gini ratio by province
+        - 'MINIMUM_WAGE' or 'UMP' or 'UMR' or 'UPAH'             = Provincial minimum wage
+        - 'INFORMAL' or 'INFORMAL EMPLOYMENT' or 'PEKERJA INFORMAL'
+            = Share of informal employment by province (2018-2025)
+        - 'EMPLOYMENT RATE' or 'EMPLOYED' or 'BEKERJA' or 'PEKERJA'
+            = Employment rate (%) and employed persons (thousand) nationally (Feb & Aug, 2018-2025)
+
+    region:
+        Optional province filter. Examples: "Jawa Barat", "Banten", "DKI Jakarta"
+        If None, returns all provinces.
+
+    start_year / end_year:
+        Filter by year range. Examples: start_year=2020, end_year=2024
+    
+    EXAMPLES:
+        - "PDRB Banten 2020-2025" → indicator="PDRB", region="Banten", start_year=2020, end_year=2025
+        - "GRDP Jawa Barat"       → indicator="GRDP", region="Jawa Barat"
+        - "PDRB per kapita semua provinsi 2023" → indicator="PDRB", start_year=2023, end_year=2023
+        - "informal employment Jawa Barat" → indicator="INFORMAL", region="Jawa Barat"
+        - "employment rate 2020-2024"       → indicator="EMPLOYMENT RATE", start_year=2020, end_year=2024
+    """
+    import requests
+    import pandas as pd
+    import time
+    import sys
+
+    API_KEY = BPS_API_KEY
+    if not API_KEY:
+        return "Error: BPS_API_KEY missing."
+
+    ind_lower = indicator.lower().strip()
+
+    # th_id → year mapping (BPS internal period ID)
+    th_map = {
+        100: 2000, 101: 2001, 102: 2002, 103: 2003, 104: 2004,
+        105: 2005, 106: 2006, 107: 2007, 108: 2008, 109: 2009,
+        110: 2010, 111: 2011, 112: 2012, 113: 2013, 114: 2014,
+        115: 2015, 116: 2016, 117: 2017, 118: 2018, 119: 2019,
+        120: 2020, 121: 2021, 122: 2022, 123: 2023, 124: 2024,
+        125: 2025, 126: 2026,
+    }
+
+    # Filter th_map berdasarkan start_year/end_year
+    def filter_years(th_map, start_year, end_year):
+        return {
+            th_id: year for th_id, year in th_map.items()
+            if (start_year is None or year >= start_year)
+            and (end_year is None or year <= end_year)
+        }
+
+    all_rows = []
+
+    # ================================================================
+    # HDI / IPM
+    # ================================================================
+    if any(w in ind_lower for w in ['hdi', 'ipm', 'human development']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        for th_id, year in filtered.items():
+            print(f"DEBUG BPS HDI: year={year}", file=sys.stderr)
+            url = f"https://webapi.bps.go.id/v1/api/list/model/data/domain/0000/var/494/th/{th_id}/key/{API_KEY}"
+            try:
+                data = requests.get(url, timeout=15).json()
+                if data.get("status") != "OK" or "datacontent" not in data:
+                    continue
+
+                prov_map = {str(x["val"]): x["label"] for x in data.get("vervar", [])}
+
+                for key, value in data["datacontent"].items():
+                    if value is None:
+                        continue
+                    kode_prov = str(key)[:4]
+                    region_name = prov_map.get(kode_prov, kode_prov)
+                    all_rows.append({
+                        "source": "BPS", "country": "Indonesia",
+                        "region": region_name, "indicator": "HDI",
+                        "date": f"{year}-01-01", "value": float(value), "unit": "Index"
+                    })
+                time.sleep(0.3)
+            except Exception as e:
+                print(f"DEBUG BPS HDI ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+# PDRB / GRDP PER CAPITA (via SIMDASI)
+# ================================================================
+    elif any(w in ind_lower for w in ['pdrb', 'grdp', 'gross regional', 'regional domestic']):
+    
+        # 2 table ID berbeda: PDRB per kapita vs PDRB total
+        # Gunakan per kapita sebagai default, bisa dikembangkan nanti
+        TABLE_ID = "akhBTUg3b1NjSUNJTExVbE4xT2NMUT09"  # GRDP per capita current price
+        DATASET_ID = 25
+
+        pdrb_years = filter_years(
+            {y: y for y in range(2015, 2026)},
+            start_year, end_year
+        )
+
+        for year in pdrb_years.keys():
+            print(f"DEBUG BPS PDRB: year={year}", file=sys.stderr)
+            url = (
+                f"https://webapi.bps.go.id/v1/api/interoperabilitas/"
+                f"datasource/simdasi/id/{DATASET_ID}/"
+                f"tahun/{year}/"
+                f"id_tabel/{TABLE_ID}/"
+                f"wilayah/0000000/"
+                f"key/{API_KEY}"
+            )
+            try:
+                js = requests.get(url, timeout=30).json()
+
+                if js.get("status") != "OK" or "data" not in js:
+                    print(f"DEBUG BPS PDRB SKIP {year}: status={js.get('status')}", file=sys.stderr)
+                    continue
+
+                table = js["data"][1]
+
+                if table.get("condition") == "ERROR":
+                    print(f"DEBUG BPS PDRB SKIP {year}: {table.get('message')}", file=sys.stderr)
+                    continue
+
+                for row in table.get("data", []):
+                    value = None
+
+                    # Format lama: ada key "variables" berisi dict
+                    if isinstance(row.get("variables"), dict) and len(row["variables"]) > 0:
+                        var = next(iter(row["variables"].values()))
+                        value = var.get("value_raw")
+
+                    # Format baru: value langsung di key pertama yang bukan metadata
+                    else:
+                        ignore = {"label", "label_raw", "satuan", "kode_wilayah", "variables"}
+                        for k in row.keys():
+                            if k not in ignore:
+                                value = row[k]
+                                break
+
+                    if value in [None, "...", "NA", "–", "", "n/a"]:
+                        continue
+
+                    try:
+                        value = float(str(value).replace(",", "."))
+                    except Exception:
+                        continue
+
+                    region_name = row.get("label_raw") or row.get("label", "")
+                    if not region_name:
+                        continue
+
+                    all_rows.append({
+                        "region": region_name,
+                        "indicator": "GRDP_PER_CAPITA_CURRENT_PRICE",
+                        "date": f"{year}-01-01",
+                        "value": value,
+                        "unit": "Thousand IDR"
+                    })
+
+                time.sleep(0.2)
+
+            except Exception as e:
+                print(f"DEBUG BPS PDRB ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+    # UNEMPLOYMENT / TPT & LFPR / TPAK (via SIMDASI)
+    # ================================================================
+    elif any(w in ind_lower for w in ['unemployment', 'tpt', 'lfpr', 'tpak', 'labor force', 'labour force']):
+        simdasi_years = filter_years(
+            {y: y for y in range(2017, 2026)},
+            start_year, end_year
+        )
+        id_tabel = "WjNUbVprTDh4SjN4RXhLaUptMHZqQT09"
+
+        var_map = {
+            "eoyfm9zw5k": ("UNEMPLOYMENT_RATE_FEB", "02"),
+            "boneklh24o": ("UNEMPLOYMENT_RATE_AUG", "08"),
+            "yljj4gyftp": ("LFPR_FEB", "02"),
+            "va6q7v4tcf": ("LFPR_AUG", "08"),
+        }
+
+        # Filter hanya indicator yang diminta
+        if any(w in ind_lower for w in ['unemployment', 'tpt']):
+            var_map = {k: v for k, v in var_map.items() if 'UNEMPLOYMENT' in v[0]}
+        elif any(w in ind_lower for w in ['lfpr', 'tpak', 'labor', 'labour']):
+            var_map = {k: v for k, v in var_map.items() if 'LFPR' in v[0]}
+
+        for year in simdasi_years.keys():
+            print(f"DEBUG BPS SIMDASI: year={year}", file=sys.stderr)
+            url = (
+                f"https://webapi.bps.go.id/v1/api/interoperabilitas/datasource/simdasi/id/25/"
+                f"tahun/{year}/id_tabel/{id_tabel}/wilayah/0000000/key/{API_KEY}"
+            )
+            try:
+                response = requests.get(url, timeout=15).json()
+                table = response["data"][1]
+                rows_data = table["data"]
+
+                for row in rows_data:
+                    region_name = row["label"]
+                    variables = row.get("variables", {})
+
+                    for var_id, (indicator_name, month) in var_map.items():
+                        value = variables.get(var_id, {}).get("value")
+                        if value is None:
+                            continue
+                        try:
+                            value = float(str(value).replace(",", ".").replace(" ", ""))
+                        except Exception:
+                            continue
+                        all_rows.append({
+                            "source": "BPS", "country": "Indonesia",
+                            "region": region_name, "indicator": indicator_name,
+                            "date": f"{year}-{month}-01", "value": value, "unit": "Percent"
+                        })
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"DEBUG BPS SIMDASI ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+    # POVERTY / KEMISKINAN
+    # ================================================================
+    elif any(w in ind_lower for w in ['poverty', 'kemiskinan', 'miskin']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        area_map = {"432": "URBAN", "433": "RURAL", "434": "TOTAL"}
+        semester_map = {"61": "03", "62": "09", "63": "12"}
+
+        for th_id, year in filtered.items():
+            print(f"DEBUG BPS POVERTY: year={year}", file=sys.stderr)
+            url = f"https://webapi.bps.go.id/v1/api/list/model/data/lang/ind/domain/0000/var/192/th/{th_id}/key/{API_KEY}"
+            try:
+                data = requests.get(url, timeout=15).json()
+                if data.get("status") != "OK" or "datacontent" not in data:
+                    continue
+
+                prov_map = {str(x["val"]): x["label"] for x in data.get("vervar", [])}
+
+                for key, value in data["datacontent"].items():
+                    if value is None:
+                        continue
+                    key_str = str(key)
+                    prov_code = key_str[:4]
+                    area_code = key_str[7:10]
+                    sem_code = key_str[-2:]
+                    region_name = prov_map.get(prov_code, prov_code)
+                    ind_name = f"POVERTY_RATE_{area_map.get(area_code, 'TOTAL')}"
+                    month = semester_map.get(sem_code, "12")
+                    all_rows.append({
+                        "source": "BPS", "country": "Indonesia",
+                        "region": region_name, "indicator": ind_name,
+                        "date": f"{year}-{month}-01", "value": float(value), "unit": "Percent"
+                    })
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"DEBUG BPS POVERTY ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+    # GINI RATIO
+    # ================================================================
+    elif any(w in ind_lower for w in ['gini', 'inequality', 'ketimpangan']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        for th_id, year in filtered.items():
+            print(f"DEBUG BPS GINI: year={year}", file=sys.stderr)
+            url = f"https://webapi.bps.go.id/v1/api/list/model/data/lang/ind/domain/0000/var/98/th/{th_id}/key/{API_KEY}"
+            try:
+                data = requests.get(url, timeout=15).json()
+                if "datacontent" not in data:
+                    continue
+
+                prov_map = {str(x["val"]): x["label"] for x in data.get("vervar", [])}
+                area_map_gini = {str(x["val"]): x["label"] for x in data.get("turvar", [])}
+                period_map = {str(x["val"]): x["label"] for x in data.get("turtahun", [])}
+
+                for key, value in data["datacontent"].items():
+                    if value is None:
+                        continue
+                    key_str = str(key)
+                    prov_code = key_str[:4]
+                    area_code = key_str[6:9]
+                    period_code = key_str[-2:]
+
+                    if prov_code not in prov_map:
+                        continue
+
+                    region_name = prov_map[prov_code]
+                    area_label = area_map_gini.get(area_code, "")
+                    period_label = period_map.get(period_code, "")
+
+                    if "Perkotaan" in area_label:
+                        ind_name = "GINI_RATIO_URBAN"
+                    elif "Perdesaan" in area_label:
+                        ind_name = "GINI_RATIO_RURAL"
+                    else:
+                        ind_name = "GINI_RATIO_TOTAL"
+
+                    if "Semester 1" in period_label:
+                        date = f"{year}-03-01"
+                    elif "Semester 2" in period_label:
+                        date = f"{year}-09-01"
+                    else:
+                        date = f"{year}-12-01"
+
+                    try:
+                        all_rows.append({
+                            "source": "BPS", "country": "Indonesia",
+                            "region": region_name, "indicator": ind_name,
+                            "date": date, "value": float(value), "unit": "Index"
+                        })
+                    except Exception:
+                        continue
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"DEBUG BPS GINI ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+    # MINIMUM WAGE / UMP
+    # ================================================================
+    elif any(w in ind_lower for w in ['minimum_wage', 'minimum wage', 'ump', 'umr', 'umk', 'upah minimum']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        for th_id, year in filtered.items():
+            print(f"DEBUG BPS UMP: year={year}", file=sys.stderr)
+            url = (
+                f"https://webapi.bps.go.id/v1/api/list/model/data/"
+                f"lang/ind/domain/3300/var/2824/th/{th_id}/key/{API_KEY}"
+            )
+            try:
+                data = requests.get(url, timeout=15).json()
+                if data.get("status") != "OK" or "datacontent" not in data:
+                    continue
+
+                prov_map = {str(x["val"]): x["label"].strip() for x in data.get("vervar", [])}
+                content = data["datacontent"]
+
+                for prov_val, region_name in prov_map.items():
+                    key = f"{prov_val}28240{th_id}0"
+                    value = content.get(key)
+                    if value is None:
+                        continue
+                    try:
+                        all_rows.append({
+                            "source": "BPS", "country": "Indonesia",
+                            "region": region_name, "indicator": "MINIMUM_WAGE",
+                            "date": f"{year}-01-01", "value": float(value), "unit": "IDR"
+                        })
+                    except Exception:
+                        continue
+                time.sleep(0.3)
+            except Exception as e:
+                print(f"DEBUG BPS UMP ERROR {year}: {e}", file=sys.stderr)
+
+    
+
+    # ================================================================
+    # INFORMAL EMPLOYMENT SHARE
+    # ================================================================
+    elif any(w in ind_lower for w in ['informal', 'informal employment', 'pekerja informal', 'sektor informal']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        for th_id, year in filtered.items():
+            if year < 2018:
+                continue
+            th = th_id  # th_id sudah = tahun - 1900 + offset, cek mapping
+            # BPS th_id untuk 2018 = 118, 2019 = 119, dst
+            th_bps = year - 1900  # 2018 → 118, 2019 → 119
+            print(f"DEBUG BPS INFORMAL: year={year}, th={th_bps}", file=sys.stderr)
+
+            url = (
+                f"https://webapi.bps.go.id/v1/api/list/model/data/"
+                f"lang/ind/domain/0000/var/2153/th/{th_bps}/key/{API_KEY}"
+            )
+            try:
+                js = requests.get(url, timeout=30).json()
+
+                if js.get("status") != "OK":
+                    print(f"DEBUG BPS INFORMAL SKIP {year}: {js.get('status')}", file=sys.stderr)
+                    continue
+
+                prov_map = {str(x["val"]): x["label"].strip() for x in js.get("vervar", [])}
+                content = js["datacontent"]
+
+                for pid, region_name in prov_map.items():
+                    key = f"{pid}21530{th_bps}0"
+                    value = content.get(key)
+
+                    if value in [None, "...", "-", "NA"]:
+                        continue
+
+                    try:
+                        all_rows.append({
+                            "source": "BPS", "country": "Indonesia",
+                            "region": region_name, "indicator": "INFORMAL_EMPLOYMENT_SHARE",
+                            "date": f"{year}-01-01", "value": float(value), "unit": "Percent"
+                        })
+                    except Exception:
+                        continue
+
+                time.sleep(0.2)
+            except Exception as e:
+                print(f"DEBUG BPS INFORMAL ERROR {year}: {e}", file=sys.stderr)
+
+    # ================================================================
+    # EMPLOYMENT RATE & EMPLOYED PERSONS
+    # ================================================================
+    elif any(w in ind_lower for w in ['employment rate', 'employed', 'bekerja', 'pekerja', 'tenaga kerja bekerja']):
+        filtered = filter_years(th_map, start_year, end_year)
+
+        period_suffix_map = {
+            "189": ("02", "February"),
+            "190": ("08", "August"),
+        }
+
+        for th_id, year in filtered.items():
+            if year < 2018:
+                continue
+            th_bps = year - 1900
+            print(f"DEBUG BPS EMPLOYMENT: year={year}, th={th_bps}", file=sys.stderr)
+
+            url = (
+                f"https://webapi.bps.go.id/v1/api/list/model/data/"
+                f"lang/ind/domain/0000/var/1953/th/{th_bps}/key/{API_KEY}"
+            )
+            try:
+                js = requests.get(url, timeout=30).json()
+
+                if js.get("status") != "OK":
+                    print(f"DEBUG BPS EMPLOYMENT SKIP {year}: {js.get('status')}", file=sys.stderr)
+                    continue
+
+                content = js["datacontent"]
+
+                for key, value in content.items():
+                    if value is None:
+                        continue
+
+                    # Deteksi periode dari 3 digit terakhir
+                    suffix = key[-3:]
+                    if suffix not in period_suffix_map:
+                        continue
+
+                    month, period_label = period_suffix_map[suffix]
+
+                    # Deteksi tipe indicator dari digit pertama key
+                    first_digit = key[0]
+                    if first_digit == "1":
+                        ind_name = f"EMPLOYMENT_RATE_{period_label.upper()}"
+                        unit = "Percent"
+                    elif first_digit == "2":
+                        ind_name = f"EMPLOYED_PERSONS_{period_label.upper()}"
+                        unit = "Thousand Persons"
+                    else:
+                        continue
+
+                    # Filter indicator kalau user spesifik minta rate atau persons
+                    if 'rate' in ind_lower and 'RATE' not in ind_name:
+                        continue
+                    if 'persons' in ind_lower and 'PERSONS' not in ind_name:
+                        continue
+
+                    try:
+                        all_rows.append({
+                            "source": "BPS", "country": "Indonesia",
+                            "region": "Indonesia",  # var ini nasional
+                            "indicator": ind_name,
+                            "date": f"{year}-{month}-01",
+                            "value": float(value),
+                            "unit": unit
+                        })
+                    except Exception:
+                        continue
+
+                time.sleep(0.2)
+            except Exception as e:
+                print(f"DEBUG BPS EMPLOYMENT ERROR {year}: {e}", file=sys.stderr)
+
+    else:
+        return f"BPS indicator '{indicator}' not recognized. Available: HDI, UNEMPLOYMENT, LFPR, POVERTY, GINI, MINIMUM_WAGE"
+
+    # ================================================================
+    # POST-PROCESSING
+    # ================================================================
+    if not all_rows:
+        return f"BPS: No data found for indicator='{indicator}', start_year={start_year}, end_year={end_year}"
+
+    df = pd.DataFrame(all_rows)
+
+    # Pastikan kolom standar ada
+    for col in ["source", "country", "region", "indicator", "date", "value", "unit"]:
+        if col not in df.columns:
+            df[col] = None
+
+    # Filter region kalau diminta
+    if region:
+        region_lower = region.lower()
+        df = df[df["region"].str.lower().str.contains(region_lower, na=False)]
+
+    if df.empty:
+        return f"BPS: No data found for region='{region}'"
+
+    # ================================================================
+    # PIVOT: date | indicator_1 | indicator_2 | ...
+    # Format: date sebagai index, setiap indicator jadi kolom
+    # ================================================================
+    try:
+        # Kalau multi-indicator (misal UNEMPLOYMENT + LFPR)
+        unique_indicators = df["indicator"].unique()
+        unique_regions = df["region"].unique()
+
+        if len(unique_indicators) > 1 and len(unique_regions) == 1:
+            # Satu region, multi indicator → pivot by indicator
+            pivot = (
+                df.pivot_table(
+                    index="date",
+                    columns="indicator",
+                    values="value",
+                    aggfunc="mean"
+                )
+                .reset_index()
+                .rename(columns={"date": "Date"})
+            )
+            pivot.columns.name = None
+
+        elif len(unique_regions) > 1 and len(unique_indicators) == 1:
+            # Multi region, satu indicator → pivot by region
+            pivot = (
+                df.pivot_table(
+                    index="date",
+                    columns="region",
+                    values="value",
+                    aggfunc="mean"
+                )
+                .reset_index()
+                .rename(columns={"date": "Date"})
+            )
+            pivot.columns.name = None
+
+        elif len(unique_regions) > 1 and len(unique_indicators) > 1:
+            # Multi region, multi indicator → date | region | indicator_1 | indicator_2
+            pivot = (
+                df.pivot_table(
+                    index=["date", "region"],
+                    columns="indicator",
+                    values="value",
+                    aggfunc="mean"
+                )
+                .reset_index()
+                .rename(columns={"date": "Date", "region": "Region"})
+            )
+            pivot.columns.name = None
+
+        else:
+            # Single region, single indicator → date | value
+            ind_name = df["indicator"].iloc[0]
+            pivot = (
+                df[["date", "value"]]
+                .rename(columns={"date": "Date", "value": ind_name})
+                .sort_values("Date")
+                .reset_index(drop=True)
+            )
+
+        df_final = pivot.sort_values("Date").reset_index(drop=True)
+
+    except Exception as e:
+        print(f"DEBUG BPS PIVOT ERROR: {e}", file=sys.stderr)
+        df_final = df.sort_values(["indicator", "date"]).reset_index(drop=True)
+
+    title = f"BPS - {indicator.upper()}" + (f" ({region})" if region else " (All Provinces)")
+    st.session_state.all_dfs.append({"title": title, "df": df_final})
+
+    print(f"DEBUG BPS DYNAMIC: {len(df_final)} rows → {title}", file=sys.stderr)
+
+    return (
+        f"Successfully fetched BPS {indicator.upper()} data.\n"
+        f"Rows: {len(df_final)} | Regions: {df['region'].nunique()} | Indicators: {df['indicator'].nunique()}\n"
+        f"{df_final.head(5).to_string(index=False)}"
+    )

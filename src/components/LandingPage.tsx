@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import logo from "./assets/logo.png";
+import fikri from "./assets/fikri.jpg";
 import { 
   ArrowRight, 
   Sparkles, 
@@ -23,7 +24,9 @@ import {
   Plus,
   Play,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  GraduationCap,
+  Linkedin,
 } from "lucide-react";
 
 interface LandingPageProps {
@@ -40,64 +43,61 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
   const [synthProgress, setSynthProgress] = useState(0);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
 
-  // Auto typing simulator for hero
   useEffect(() => {
-    let typingInterval: NodeJS.Timeout;
-    let progressInterval: NodeJS.Timeout;
-    let delayTimeout: NodeJS.Timeout;
+  let typingInterval: NodeJS.Timeout;
+  let progressInterval: NodeJS.Timeout;
+  let delayTimeout: NodeJS.Timeout;
 
-    const runAnimation = () => {
-      const prompt =
-        "Fetch UK, China, India, US inflation projection data from IMF";
+  const prompt = "Fetch UK, China, India, US inflation projection data from IMF";
 
-      setTypedText("");
-      setSynthProgress(0);
-      setIsSynthesizing(false);
+  const runAnimation = () => {
+    setTypedText("");
+    setSynthProgress(0);
+    setIsSynthesizing(false);
 
-      let index = 0;
+    // ✅ FIX: pakai ref-style counter, bukan closure variable
+    let index = 0;
 
-      typingInterval = setInterval(() => {
-        if (index < prompt.length) {
-          setTypedText((prev) => prev + prompt.charAt(index));
-          index++;
-        } else {
-          clearInterval(typingInterval);
+    typingInterval = setInterval(() => {
+      index++;  // ✅ increment DULU sebelum slice
+      setTypedText(prompt.slice(0, index));  // ✅ slice dari string asli, bukan append
 
-          delayTimeout = setTimeout(() => {
-            setIsSynthesizing(true);
+      if (index >= prompt.length) {
+        clearInterval(typingInterval);
 
-            let progress = 0;
+        delayTimeout = setTimeout(() => {
+          setIsSynthesizing(true);
 
-            progressInterval = setInterval(() => {
-              if (progress < 100) {
-                progress += 4;
-                setSynthProgress(progress);
-              } else {
-                clearInterval(progressInterval);
+          let progress = 0;
 
-                delayTimeout = setTimeout(() => {
-                  setIsSynthesizing(false);
-                  setSynthProgress(0);
-                  setTypedText("");
+          progressInterval = setInterval(() => {
+            progress += 2;  // ✅ lebih halus dari 4
+            setSynthProgress(Math.min(progress, 100));
 
-                  // restart animation
-                  runAnimation();
-                }, 4000);
-              }
-            }, 80);
-          }, 2500);
-        }
-      }, 70);
-    };
+            if (progress >= 100) {
+              clearInterval(progressInterval);
 
-    runAnimation();
+              delayTimeout = setTimeout(() => {
+                setIsSynthesizing(false);
+                setSynthProgress(0);
+                setTypedText("");
+                runAnimation();
+              }, 4000);
+            }
+          }, 100);  // ✅ lebih lambat dari 80ms
+        }, 2500);
+      }
+    }, 90);  // ✅ lebih lambat dari 70ms → tidak kecepetan
+  };
 
-    return () => {
-      clearInterval(typingInterval);
-      clearInterval(progressInterval);
-      clearTimeout(delayTimeout);
-    };
-  }, []);
+  runAnimation();
+
+  return () => {
+    clearInterval(typingInterval);
+    clearInterval(progressInterval);
+    clearTimeout(delayTimeout);
+  };
+}, []);
 
     // Handle scroll state for sticky glassmorphism header
   useEffect(() => {
@@ -197,6 +197,9 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
             <a href="#sources-index" className={`transition-colors ${
               darkMode ? "hover:text-white text-[#c4b9ae]" : "hover:text-slate-950 text-slate-600"
             }`}>Indicator Registries</a>
+            <a href="#about-us-section" className={`transition-colors ${
+              darkMode ? "hover:text-white text-[#c4b9ae]" : "hover:text-slate-950 text-slate-600"
+            }`}>About Us</a>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -278,7 +281,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
                 onClick={() => onGetStarted("register")}
                 className="absolute right-2 px-4 py-2 bg-[#128a5e] text-white text-xs font-bold rounded-lg border-none cursor-pointer hover:bg-[#159e6c] transition-colors flex items-center gap-1.5"
               >
-                <span>Synthesize</span>
+                <span></span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             </div>
@@ -961,6 +964,98 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
         </div>
       </section>
 
+      {/* About Us / Our Story Section */}
+      <section id="about-us-section" className={`scroll-mt-24 max-w-5xl mx-auto px-6 py-24 border-t transition-colors ${
+        darkMode ? "border-[#2d2722]/35" : "border-slate-200"
+      }`}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          {/* Visual/Aesthetic Founder Card */}
+          <div className="lg:col-span-5 flex flex-col items-center">
+            <div className={`p-6 border rounded-2xl w-full max-w-sm transition-all duration-300 relative overflow-hidden ${
+              darkMode 
+                ? "bg-[#161412] border-[#2c2621] hover:border-[#128a5e]/40" 
+                : "bg-white border-[#e5ded4] hover:border-[#128a5e]/40 shadow-sm"
+            }`}>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#128a5e]/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex flex-col items-center text-center space-y-4">
+                {/* Avatar */}
+                <div className="relative">
+                  <img
+                    src={fikri}
+                    alt="Ahmad Fikri Afandi"
+                    className="w-24 h-24 rounded-full object-cover border border-[#128a5e]/20 shadow-lg"
+                  />
+
+                  <div className="absolute -bottom-1 -right-1 bg-[#128a5e] text-white p-1.5 rounded-full shadow-lg">
+                    <GraduationCap className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className={`text-lg font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>Ahmad Fikri Afandi</h3>
+                  <p className="text-xs font-mono text-[#128a5e] mt-1 font-semibold">Economics Student & Founder</p>
+                  <p className={`text-[11px] mt-1.5 leading-relaxed ${darkMode ? "text-[#8a7f75]" : "text-slate-500"}`}>
+                    Macroeconomics Enthusiast & Developer
+                  </p>
+                </div>
+
+                {/* LinkedIn Button */}
+                <a
+                  href="https://www.linkedin.com/in/afandiahmadfikri"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 bg-[#0077b5] hover:bg-[#006297] text-white text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 shadow-md shadow-[#0077b5]/15 cursor-pointer border-none"
+                >
+                  <Linkedin className="w-4 h-4" />
+                  <span>Connect on LinkedIn</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Story Text Column */}
+          <div className="lg:col-span-7 space-y-6 text-left">
+            <span className="text-[#128a5e] text-xs font-mono font-bold uppercase tracking-widest bg-[#128a5e]/10 px-3 py-1 rounded">
+              DATAMINTAI FOUNDER
+            </span>
+            <h2 className={`text-3xl sm:text-4xl font-serif italic font-normal tracking-tight ${
+              darkMode ? "text-white" : "text-slate-900"
+            }`}>
+              Our Story
+            </h2>
+            
+            <div className={`space-y-4 text-xs sm:text-sm leading-relaxed ${
+              darkMode ? "text-[#c4b9ae]" : "text-slate-600"
+            }`}>
+              <p className="font-semibold text-slate-950 dark:text-white">
+                DataMintAI began with a simple frustration.
+              </p>
+              <p>
+                I'm <strong className={`font-semibold ${darkMode ? "text-white" : "text-slate-900"}`}>Ahmad Fikri Afandi</strong>, an Economics student and the founder of DataMintAI.
+              </p>
+              <p>
+                While working on my research, I frequently needed data from institutions such as the World Bank, IMF, FRED, and other public sources. As someone who enjoys coding, I built Python scripts to retrieve data through APIs, making the process much faster for myself.
+              </p>
+              <p className="font-serif italic text-[#128a5e] text-base py-1">
+                Then I started wondering: what about everyone else?
+              </p>
+              <p>
+                Most students, researchers, and analysts don't know how to use APIs or write code. They often spend hours searching across multiple websites, downloading datasets one by one, and manually cleaning the data before they can even begin their analysis.
+              </p>
+              <p>
+                That realization inspired me to build DataMintAI.
+              </p>
+              <p className={`p-4 border-l-2 border-[#128a5e] bg-[#128a5e]/5 rounded-r-xl ${
+                darkMode ? "text-[#ede7db]" : "text-slate-800"
+              }`}>
+                My vision is to make public data as easy to access as asking a question in natural language, so people can spend less time collecting data and more time discovering meaningful insights.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Structured CTA Bottom Container */}
       <section id="get-started-cta" className="max-w-4xl mx-auto px-6 py-28 text-center relative">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-[#128a5e]/10 rounded-full blur-3xl -z-10" />
@@ -999,6 +1094,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
                   : "bg-slate-50 border-slate-200 hover:border-slate-400 text-slate-800 hover:bg-slate-100"
               }`}
             >
+              Sign In to Sandbox
             </button>
           </div>
         </div>
@@ -1012,6 +1108,7 @@ export default function LandingPage({ onGetStarted, darkMode, setDarkMode }: Lan
             <a href="#about-target" className={`transition-colors ${darkMode ? "hover:text-white" : "hover:text-slate-900"}`}>How It Works</a>
             <a href="#sources-index" className={`transition-colors ${darkMode ? "hover:text-white" : "hover:text-slate-900"}`}>Indicators Index</a>
             <span>•</span>
+            <span className="text-[#128a5e]">Supabase Credential Sandbox</span>
           </div>
         </div>
       </footer>

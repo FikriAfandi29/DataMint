@@ -6,7 +6,7 @@ interface ChartProps {
   data: ChartPoint[];
   series: ChartSeries[];
   title: string;
-  type?: "line" | "bar" | "dual"; // dual means follow each series type declaration
+  type?: "line" | "bar" | "dual";
 }
 
 export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProps) {
@@ -15,45 +15,31 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
   const [dimensions, setDimensions] = useState({ width: 380, height: 240 });
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  // Get active theme status
   const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
   const handleExportPNG = () => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
-
-    // Convert SVG element to serialized string and set standard XML schema
     const clonedSvg = svgEl.cloneNode(true) as SVGSVGElement;
     clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-
     const svgString = new XMLSerializer().serializeToString(clonedSvg);
     const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
     const blobURL = window.URL.createObjectURL(svgBlob);
-
     const image = new Image();
     image.onload = () => {
-      const scale = 2.5; // Premium high density rendering
+      const scale = 2.5;
       const canvas = document.createElement("canvas");
       canvas.width = width * scale;
       canvas.height = height * scale;
       const context = canvas.getContext("2d");
-      
       if (context) {
         context.scale(scale, scale);
-        
-        // Draw elegant high fidelity background matching active theme
         context.fillStyle = isDark ? "#090d16" : "#ffffff";
         context.fillRect(0, 0, width, height);
-
-        // Add a beautiful custom border to chart image matching theme borders
         context.strokeStyle = isDark ? "#1e293b" : "#f1f5f9";
         context.lineWidth = 1.5;
         context.strokeRect(0, 0, width, height);
-
-        // Draw the serialized SVG image
         context.drawImage(image, 0, 0, width, height);
-        
-        // Trigger high quality secure PNG download
         const pngURL = canvas.toDataURL("image/png");
         const downloadLink = document.createElement("a");
         downloadLink.href = pngURL;
@@ -64,12 +50,10 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
       }
       window.URL.revokeObjectURL(blobURL);
     };
-
     image.onerror = (err) => {
-      console.error("Failed to generate crisp chart image from SVG", err);
+      console.error("Failed to generate chart image", err);
       window.URL.revokeObjectURL(blobURL);
     };
-
     image.src = blobURL;
   };
 
@@ -78,21 +62,13 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
     const observer = new ResizeObserver((entries) => {
       if (!entries || entries.length === 0) return;
       const { width, height } = entries[0].contentRect;
-      setDimensions({ 
-        width: Math.max(width, 150), 
-        height: Math.max(height, 100) 
-      });
+      setDimensions({ width: Math.max(width, 150), height: Math.max(height, 100) });
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
 
   const { width, height } = dimensions;
-
-  // Chart Layout Margins
-  const padding = { top: 25, right: 20, bottom: 35, left: 45 };
-  const graphWidth = width - padding.left - padding.right;
-  const graphHeight = height - padding.top - padding.bottom;
 
   if (!data || data.length === 0) {
     return (
@@ -102,7 +78,7 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
     );
   }
 
-  // Get min/max Y values across all series
+  // ✅ FIX: allValues DULU sebelum semua yang bergantung padanya
   const allValues = data.flatMap((item) =>
     series.map((s) => {
       const val = item[s.key];
@@ -112,12 +88,26 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
 
   let tempMax = Math.max(...allValues, 1);
   let tempMin = Math.min(...allValues, 0);
-
-  // Give some comfort padding to chart scale limits
   const range = tempMax - tempMin || 1;
   const maxVal = tempMax + range * 0.1;
   const minVal = tempMin < 0 ? tempMin - range * 0.1 : 0;
   const valDelta = maxVal - minVal;
+
+  // ✅ FIX: formatAxisLabel setelah allValues
+  const formatAxisLabel = (val: number): string => {
+    const absVal = Math.abs(val);
+    if (absVal >= 1_000_000_000) return `${(val / 1_000_000_000).toFixed(1)}B`;
+    if (absVal >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+    if (absVal >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
+    if (absVal < 100) return val.toFixed(2);
+    return val.toFixed(0);
+  };
+
+  // ✅ FIX: padding dinamis setelah allValues
+  const maxLabelWidth = allValues.some(v => Math.abs(v) >= 1_000_000) ? 55 : 45;
+  const padding = { top: 25, right: 20, bottom: 35, left: maxLabelWidth };
+  const graphWidth = width - padding.left - padding.right;
+  const graphHeight = height - padding.top - padding.bottom;
 
   const getX = (valIndex: number) => {
     if (data.length <= 1) return padding.left + graphWidth / 2;
@@ -127,30 +117,23 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
   const getY = (numericVal: number) => {
     const ratio = (numericVal - minVal) / valDelta;
     if (type === "bar") {
-      // Ground bar heights strictly on the base axis line
       return height - padding.bottom - ratio * graphHeight;
     }
-    // Give line markers a beautiful 6% top/bottom visual safety margin
     const graphMarginY = graphHeight * 0.06;
     const contractedHeight = graphHeight - 2 * graphMarginY;
     return height - padding.bottom - graphMarginY - ratio * contractedHeight;
   };
 
-  // Convert Color Labels
   const getColorHex = (colorName: string) => {
-    if (colorName === "navy") return "#1e3a8a"; // Navy Blue Accent
-    if (colorName === "mint") return "#10b981"; // Mint Green Accent
+    if (colorName === "navy") return "#1e3a8a";
+    if (colorName === "mint") return "#10b981";
     return colorName;
   };
 
-  // Calculate Gridlines
   const gridTicks = 5;
   const gridLines = Array.from({ length: gridTicks }, (_, i) => {
     const val = minVal + (i / (gridTicks - 1)) * valDelta;
-    return {
-      value: val.toFixed(1),
-      y: getY(val),
-    };
+    return { value: val, y: getY(val) };
   });
 
   return (
@@ -169,27 +152,36 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             <Download className="w-3.5 h-3.5" />
           </button>
         </div>
-        <div className="flex flex-wrap gap-1.5 text-[9px] text-slate-500 dark:text-slate-400 font-semibold justify-start sm:justify-end max-w-full">
-          {series.map((s) => (
-            <div 
-              key={s.key} 
-              className="flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-slate-50 dark:bg-slate-950/40 px-2 py-0.5 rounded-md border border-slate-150 dark:border-slate-800/80 shadow-[0_1px_1px_rgba(0,0,0,0.01)] transition-all"
+
+        {/* ✅ FIX: Legend max 8 item, truncate nama panjang */}
+        <div className="flex flex-wrap gap-1 text-[9px] text-slate-500 dark:text-slate-400 font-semibold justify-start sm:justify-end max-w-full overflow-hidden">
+          {series.slice(0, 8).map((s) => (
+            <div
+              key={s.key}
+              className="flex items-center gap-1 shrink-0 whitespace-nowrap bg-slate-50 dark:bg-slate-950/40 px-1.5 py-0.5 rounded-md border border-slate-150 dark:border-slate-800/80"
             >
               <span
                 className="w-1.5 h-1.5 rounded-full inline-block shrink-0"
                 style={{ backgroundColor: getColorHex(s.color) }}
               />
-              <span className="uppercase tracking-wider text-[8.5px] font-bold text-slate-600 dark:text-slate-350">{s.name}</span>
+              <span className="uppercase tracking-wider text-[8px] font-bold text-slate-600 dark:text-slate-350 max-w-[80px] truncate">
+                {s.name}
+              </span>
             </div>
           ))}
+          {series.length > 8 && (
+            <div className="flex items-center px-1.5 py-0.5 text-[8px] text-slate-400 font-bold">
+              +{series.length - 8} more
+            </div>
+          )}
         </div>
       </div>
 
       <div ref={containerRef} className="flex-1 relative">
-        <svg 
+        <svg
           ref={svgRef}
-          width={width} 
-          height={height} 
+          width={width}
+          height={height}
           className="overflow-visible font-mono text-[10px] text-slate-400"
         >
           {/* Gridlines */}
@@ -204,14 +196,15 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                 strokeDasharray="4 4"
                 strokeWidth={1}
               />
-              <text 
-                x={padding.left - 8} 
-                y={line.y + 3} 
-                textAnchor="end" 
+              {/* ✅ FIX: pakai formatAxisLabel */}
+              <text
+                x={padding.left - 8}
+                y={line.y + 3}
+                textAnchor="end"
                 fill={isDark ? "#94a3b8" : "#64748b"}
                 className="fill-slate-400 font-medium font-mono"
               >
-                {line.value}
+                {formatAxisLabel(line.value)}
               </text>
             </g>
           ))}
@@ -233,12 +226,8 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             if (chartType === "bar") {
               const numSeries = series.length;
               const slotWidth = graphWidth / data.length;
-              // Cluster takes 70% of available slot space
               const clusterWidth = slotWidth * 0.7;
-              // Divide cluster width equally among series, minimum 1.5px to avoid render failures
               const barWidth = Math.max(clusterWidth / numSeries, 1.5);
-              
-              // Calculate starting point of the cluster relative to center
               const clusterStart = -((numSeries * barWidth) / 2);
 
               return (
@@ -247,22 +236,12 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     const rawVal = item[s.key];
                     const numVal = typeof rawVal === "number" ? rawVal : parseFloat(String(rawVal)) || 0;
                     const xCenter = getX(itemIdx);
-                    
-                    // Precise clustered bar placement
                     const x = xCenter + clusterStart + sIdx * barWidth;
-                    
                     const y = getY(numVal);
-                    // Determine baseline Y for the bar chart securely within grid bounds
-                    const baselineY = minVal >= 0 
-                      ? height - padding.bottom 
-                      : maxVal <= 0 
-                        ? padding.top 
-                        : getY(0);
-
+                    const baselineY = minVal >= 0 ? height - padding.bottom : maxVal <= 0 ? padding.top : getY(0);
                     const barTop = numVal >= 0 ? y : baselineY;
                     const barBottom = numVal >= 0 ? baselineY : y;
                     const barHeight = Math.max(barBottom - barTop, 1);
-
                     const isDimmed = hoveredIdx !== null && hoveredIdx !== itemIdx;
 
                     return (
@@ -282,18 +261,13 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                 </g>
               );
             } else {
-              // Line representation
               let pathStr = "";
               data.forEach((item, itemIdx) => {
                 const rawVal = item[s.key];
                 const numVal = typeof rawVal === "number" ? rawVal : parseFloat(String(rawVal)) || 0;
                 const x = getX(itemIdx);
                 const y = getY(numVal);
-                if (itemIdx === 0) {
-                  pathStr += `M ${x} ${y}`;
-                } else {
-                  pathStr += ` L ${x} ${y}`;
-                }
+                pathStr += itemIdx === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
               });
 
               return (
@@ -311,14 +285,10 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     const numVal = typeof rawVal === "number" ? rawVal : parseFloat(String(rawVal)) || 0;
                     const x = getX(itemIdx);
                     const y = getY(numVal);
-
                     const isHovered = hoveredIdx === itemIdx;
                     const showAllDots = data.length <= 16;
                     const isDimmed = hoveredIdx !== null && !isHovered;
-
-                    // Clean up cluttered line dots when there is too much data
                     if (!showAllDots && !isHovered) return null;
-
                     return (
                       <circle
                         key={itemIdx}
@@ -340,7 +310,7 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             }
           })}
 
-          {/* Vertical Guides on Hover */}
+          {/* Vertical Guide on Hover */}
           {hoveredIdx !== null && (
             <line
               x1={getX(hoveredIdx)}
@@ -372,7 +342,7 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
             );
           })}
 
-          {/* Transparent interaction columns for high fidelity snapping hover-tooltips */}
+          {/* Hover interaction zones */}
           {data.map((_, idx) => {
             const xCenter = getX(idx);
             const sliceWidth = data.length > 1 ? graphWidth / (data.length - 1) : graphWidth;
@@ -393,13 +363,13 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
           })}
         </svg>
 
-        {/* Hover Tooltip Overlay */}
+        {/* Tooltip */}
         {hoveredIdx !== null && (
           <div
             className={`absolute z-20 p-3 rounded-xl shadow-xl border text-xs font-sans pointer-events-none transition-all duration-100 ${
-              isDark 
-                ? "bg-slate-950/95 text-slate-100 border-slate-800/80 shadow-emerald-950/20" 
-                : "bg-white/95 text-slate-900 border-slate-200 shadow-slate-250"
+              isDark
+                ? "bg-slate-950/95 text-slate-100 border-slate-800/80"
+                : "bg-white/95 text-slate-900 border-slate-200"
             }`}
             style={{
               left: `${getX(hoveredIdx) > width * 0.6 ? getX(hoveredIdx) - 175 : getX(hoveredIdx) + 15}px`,
@@ -416,8 +386,8 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
               {series.map((s) => (
                 <div key={s.key} className="flex justify-between items-center gap-2 py-0.5">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span 
-                      className="w-1.5 h-1.5 rounded-full shrink-0" 
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: getColorHex(s.color) }}
                     />
                     <span className={`truncate text-[10px] font-medium ${isDark ? "text-slate-400" : "text-slate-650"}`}>
@@ -425,8 +395,9 @@ export function CustomSVGChart({ data, series, title, type = "dual" }: ChartProp
                     </span>
                   </div>
                   <span className="font-mono font-bold text-emerald-500 text-[11px] shrink-0">
+                    {/* ✅ FIX: pakai formatAxisLabel di tooltip juga */}
                     {typeof data[hoveredIdx][s.key] === "number"
-                      ? (data[hoveredIdx][s.key] as number).toFixed(2)
+                      ? formatAxisLabel(data[hoveredIdx][s.key] as number)
                       : String(data[hoveredIdx][s.key])}
                   </span>
                 </div>

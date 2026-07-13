@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./lib/supabase";
 import { CustomSVGChart } from "./components/SVGCharts";
@@ -144,6 +144,8 @@ export default function App() {
   const [activeQueryData, setActiveQueryData] = useState<Dataset | null>(null);
   const [isQueryRunning, setIsQueryRunning] = useState<boolean>(false);
   const [queryProgressStep, setQueryProgressStep] = useState<number>(0);
+  const [progressMessages, setProgressMessages] = useState<string[]>(['', '', '', '', '']); // <-- TAMBAHKAN INI
+  const sessionIdRef = useRef<string>(''); // <-- TAMBAHKAN INI
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [selectedChartType, setSelectedChartType] = useState<"line" | "bar" | "dual">("line");
@@ -511,76 +513,87 @@ export default function App() {
   };
 
   // Run Economic dataset synthesis query
-  const executeQuery = async (queryText: string) => {
-    if (!queryText.trim()) return;
-    setSearchQuery(queryText);
-    setIsQueryRunning(true);
-    setQueryProgressStep(0);
-    setActiveQueryData(null);
-    setWarningMessage(null);
-    setQueryError(null);
+  // Run Economic dataset synthesis query dengan SSE Real-time
+ // Run Economic dataset synthesis query dengan SSE Real-time
+const executeQuery = async (queryText: string) => {
+  if (!queryText.trim()) return;
+  setSearchQuery(queryText);
+  
+  // ✅ JANGAN deklarasikan sessionIdRef di sini — sudah ada di atas
+  // const sessionIdRef = useRef... ← HAPUS INI
+  
+  const sessionId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  sessionIdRef.current = sessionId; // ← pakai yang dari state, bukan deklarasi baru
 
-    // Timed checkpoints for high fidelity Perplexity/Bloomberg interface feeling
-    const stepInterval = setInterval(() => {
-      setQueryProgressStep((prev) => {
-        if (prev >= 4) {
-          clearInterval(stepInterval);
-          return 4;
-        }
-        return prev + 1;
-      });
-    }, 900);
+  setIsQueryRunning(true);
+  setQueryProgressStep(-1);
+  setActiveQueryData(null);
+  setWarningMessage(null);
+  setQueryError(null);
+  setProgressMessages(['', '', '', '', '']);
 
+  const eventSource = new EventSource(`/api/progress/${sessionId}`);
+  
+  eventSource.onmessage = (e) => {
     try {
-      const res = await fetch("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: queryText })
+      const { step, message } = JSON.parse(e.data);
+      setQueryProgressStep(step);
+      setProgressMessages(prev => {
+        const next = [...prev];
+        next[step] = message;
+        return next;
       });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || `Server returned error status ${res.status}`);
-      }
-      // Simpan histori query user ke Supabase
-      if (supabase) {
-        const {
-          data: { user }
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          await supabase.from("query_history").insert({
-            user_id: user.id,
-            prompt: queryText,
-            response: JSON.stringify(data)
-          });
-        }
-      }
-      clearInterval(stepInterval);
-      setQueryProgressStep(4);
-      
-      // Delay slightly for presentation smoothness
-      setTimeout(() => {
-        setActiveQueryData(data as Dataset);
-        setInlinePage(1);
-        setFullscreenPage(1);
-        if (data.metadata) {
-          // Trigger automatic download log generation in downloads
-          addDownloadLog(data as Dataset);
-        }
-        setIsQueryRunning(false);
-        // Switch tab to home to show the query results
-        setCurrentTab("home");
-      }, 500);
-
-    } catch (err: any) {
-      console.error("Failed to fetch synthesized query:", err);
-      clearInterval(stepInterval);
-      setQueryError(err.message || "Gagal memproses kueri karena kesalahan jaringan atau server.");
-      setIsQueryRunning(false);
+    } catch (err) {
+      console.error("Error parsing SSE message", err);
     }
   };
+
+  eventSource.onerror = () => {
+    eventSource.close();
+  };
+
+  try {
+    const res = await fetch("/api/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: queryText, sessionId }) // ← queryText bukan userQuery
+    });
+    
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `Server returned error status ${res.status}`);
+    }
+
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("query_history").insert({
+          user_id: user.id,
+          prompt: queryText,
+          response: JSON.stringify(data)
+        });
+      }
+    }
+
+    setTimeout(() => {
+      setActiveQueryData(data as Dataset);
+      setInlinePage(1);
+      setFullscreenPage(1);
+      if (data.metadata) {
+        addDownloadLog(data as Dataset);
+      }
+      setCurrentTab("home");
+    }, 500);
+
+  } catch (err: any) {
+    console.error("Failed to fetch synthesized query:", err);
+    setQueryError(err.message || "Gagal memproses kueri.");
+  } finally {
+    eventSource.close();
+    setIsQueryRunning(false);
+  }
+};
+  
 
   // Helper to add dynamic Excel history item
   const addDownloadLog = async (dataset: Dataset) => {
@@ -1573,49 +1586,67 @@ export default function App() {
                     What dataset do you need today, {lastName || "Afandi"}?
                   </h1>
 
-                  {/* High end search bar input */}
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
                       executeQuery(searchQuery);
                     }}
-                    className="relative mt-4 flex items-center max-w-xl mx-auto"
+                    className="relative mt-4 max-w-xl mx-auto"
                   >
-                    <div className="absolute left-4 top-3.5 text-slate-400">
-                      <Search className="w-4.5 h-4.5" />
+                    <div className="relative flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-emerald-500/30 focus-within:border-emerald-500/50 transition-all">
+                      
+                      {/* Search icon — top left, fixed */}
+                      <div className="absolute left-4 top-3.5 text-slate-400 pointer-events-none">
+                        <Search className="w-4 h-4" />
+                      </div>
+
+                      {/* Textarea */}
+                      <textarea
+                        id="txt-main-economic-search"
+                        rows={1}
+                        className="w-full pl-11 pr-4 pt-3.5 pb-12 bg-transparent focus:outline-none text-sm placeholder:text-slate-400 font-sans resize-none leading-relaxed text-slate-800 dark:text-slate-100 min-h-[52px] max-h-[200px] overflow-y-auto"
+                        placeholder="Describe the dataset you need..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          // Auto-resize
+                          e.target.style.height = "auto";
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            executeQuery(searchQuery);
+                          }
+                        }}
+                      />
+
+                      {/* Bottom bar: hint + button */}
+                      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-slate-800 rounded-b-2xl bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm">
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {isQueryRunning ? "Processing..." : "↵ Enter to search · Shift+Enter for new line"}
+                        </span>
+                        
+                        <button
+                          id="btn-trigger-economic-synthesis"
+                          type="submit"
+                          disabled={isQueryRunning || !searchQuery.trim()}
+                          className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                        >
+                          {isQueryRunning ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <span></span>
+                            </>
+                          ) : (
+                            <>
+                              <span></span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <textarea
-                      id="txt-main-economic-search"
-                      rows={Math.min(8, Math.max(1, searchQuery.split("\n").length))}
-                      className="w-full pl-11 pr-24 py-3 md:py-3.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white dark:bg-slate-900/50 dark:hover:bg-slate-900 dark:focus:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 text-sm placeholder:text-slate-400 font-sans transition-all shadow-sm resize-none leading-relaxed"
-                      placeholder="Describe the dataset you need..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          executeQuery(searchQuery);
-                        }
-                      }}
-                    />
-                    <button
-                      id="btn-trigger-economic-synthesis"
-                      type="submit"
-                      disabled={isQueryRunning}
-                      className="absolute right-2.5 bottom-2.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-medium text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
-                    >
-                      {isQueryRunning ? (
-                        <>
-                          <RefreshCw className="w-3 h-3 animate-spin" />
-                          <span>Synthesizing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Synthesize</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </>
-                      )}
-                    </button>
                   </form>
 
                   {/* Suggestion tags pills */}
@@ -1623,9 +1654,9 @@ export default function App() {
                     <span className="text-[10px] font-mono tracking-wide uppercase text-slate-400 font-bold inline-block mr-2.5">Suggestions:</span>
                     <div className="inline-flex flex-wrap justify-center gap-1.5 mt-1">
                       {[
-                        "Indonesia GDP Growth 2000-2025",
-                        "ASEAN Inflation Rate",
-                        "US Interest Rate History",
+                        "Indonesia GDP Growth",
+                        "Biology Academic Paper",
+                        "US Fed Rate History",
                         "China Export Data"
                       ].map((item, idx) => (
                         <button
@@ -1668,41 +1699,32 @@ export default function App() {
                     <span className="text-slate-400">Run Sequence Active</span>
                   </div>
                   <div className="space-y-1.5 pt-2">
-                    <p className="flex justify-between">
-                      <span className="text-slate-400">1. Synthesizer query parsing:</span>
-                      <span className={queryProgressStep >= 0 ? "text-emerald-400" : "text-slate-500 animate-pulse"}>
-                        {queryProgressStep >= 0 ? "✓ COMPLETE" : "RUNNING"}
-                      </span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-slate-400">2. Global indexes sweep (Model, IMF, FRED, World Bank):</span>
-                      <span className={queryProgressStep >= 1 ? "text-emerald-400" : queryProgressStep === 0 ? "text-slate-500 animate-pulse" : "text-slate-600"}>
-                        {queryProgressStep >= 1 ? "✓ COMPLETE" : queryProgressStep === 0 ? "ACQUIRING" : "QUEUED"}
-                      </span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-slate-400">3. Timeseries normalization & data cleaning:</span>
-                      <span className={queryProgressStep >= 2 ? "text-emerald-400" : queryProgressStep === 1 ? "text-slate-500 animate-pulse" : "text-slate-600"}>
-                        {queryProgressStep >= 2 ? "✓ COMPLETE" : queryProgressStep === 1 ? "CLEANING" : "QUEUED"}
-                      </span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-slate-400">4. Processing table arrays format:</span>
-                      <span className={queryProgressStep >= 3 ? "text-emerald-400" : queryProgressStep === 2 ? "text-slate-500 animate-pulse" : "text-slate-600"}>
-                        {queryProgressStep >= 3 ? "✓ COMPLETE" : queryProgressStep === 2 ? "FORMATTING" : "QUEUED"}
-                      </span>
-                    </p>
-                    <p className="flex justify-between">
-                      <span className="text-slate-400">5. Excel Sheet build export:</span>
-                      <span className={queryProgressStep >= 4 ? "text-emerald-400" : queryProgressStep === 3 ? "text-slate-500 animate-pulse" : "text-slate-600"}>
-                        {queryProgressStep >= 4 ? "✓ COMPLETE" : queryProgressStep === 3 ? "COMPILING" : "QUEUED"}
-                      </span>
-                    </p>
+                    {[
+                      "Synthesizer query parsing",
+                      "Global indexes sweep",
+                      "Data acquired & cleaning",
+                      "Processing table arrays",
+                      "Excel Sheet build export",
+                    ].map((label, idx) => (
+                      <p key={idx} className="flex justify-between">
+                        <span className="text-slate-400">{idx + 1}. {label}:</span>
+                        <span className={
+                          queryProgressStep >= idx ? "text-emerald-400" :
+                          queryProgressStep === idx - 1 ? "text-yellow-400 animate-pulse" :
+                          "text-slate-600"
+                        }>
+                          {queryProgressStep >= idx
+                            ? `✓ ${progressMessages[idx] || "COMPLETE"}`
+                            : queryProgressStep === idx - 1 ? (progressMessages[idx] || "RUNNING...")
+                            : "QUEUED"}
+                        </span>
+                      </p>
+                    ))}
                   </div>
                   <div className="w-full bg-slate-800 rounded-full h-1.5 mt-4 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-emerald-500 h-1.5 transition-all duration-300"
-                      style={{ width: `${(queryProgressStep / 4) * 100}%` }}
+                      style={{ width: `${((queryProgressStep + 1) / 5) * 100}%` }}
                     />
                   </div>
                 </div>

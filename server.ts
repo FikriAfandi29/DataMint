@@ -8,7 +8,6 @@ import fs from "fs";
 
 dotenv.config();
 
-// Standard initialization for full-stack server
 const PORT = Number(process.env.PORT) || 8080;
 const app = express();
 
@@ -17,7 +16,6 @@ console.log("PORT USED =", PORT);
 
 app.use(express.json());
 
-// Initialize GoogleGenAI ONLY on server side securely
 const apiKey = process.env.GEMINI_API_KEY;
 let ai: GoogleGenAI | null = null;
 
@@ -32,35 +30,146 @@ if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
   });
 }
 
-// In-memory data store for the user session (persistence for actual functionality)
 const datasetStore: any[] = [];
-
 const savedQueriesStore: any[] = [];
-
 const downloadStore: any[] = [];
 
-const dataSourcesStore: any[] = [
-  { id: "src-1", name: "World Bank Data API", code: "WB_REST_V2", speed: "118ms", type: "JSON", status: "Healthy", url: "https://api.worldbank.org/v2/country/idn?format=json", category: "Global", description: "Provides global development data, demographic metrics and national profiles." },
-  { id: "src-2", name: "Badan Pusat Statistik (BPS) Indonesia", code: "BPS_IND_API", speed: "172ms", type: "JSON", status: "Healthy", url: "https://webapi.bps.go.id", category: "National", description: "Official statistical agency of Indonesia. Consumer Price Indices, GDP trends, and trade stats." },
-  { id: "src-3", name: "Bank Indonesia (BI) Exchange & Monetary", code: "BI_SEKI_REST", speed: "Coming Soon", type: "JSON", status: "Coming Soon", url: "https://www.bi.go.id/id/statistik/seki", category: "National", description: "Central bank monetary policy indicators, exchange rates, and reserve reserves. (Integration Scheduled)." },
-  { id: "src-4", name: "IMF Statistics Data Network", code: "IMF_SDMX_XML", speed: "230ms", type: "XML", status: "Healthy", url: "https://dataservices.imf.org/REST/SDMX_JSON.svc/Dataflow", category: "Global", description: "International monetary exchange rates, national balance sheets, and global reserves." },
-  { id: "src-5", name: "FRED System (St. Louis Fed Reserve)", code: "FRED_V3_HTTPS", speed: "42ms", type: "JSON", status: "Healthy", url: "https://api.stlouisfed.org/fred/series?series_id=GDP", category: "Global", description: "Premier database for US and global macroeconomic indexes, updated hourly." },
-  { id: "src-6", name: "OECD Stat Link Gate", code: "OECD_REST_API", speed: "310ms", type: "JSON", status: "Healthy", url: "https://sdmx.oecd.org/public/rest/dataflow/all", category: "Global", description: "Cooperation and development metrics across member nations." },
-  { id: "src-7", name: "European Central Bank (ECB)", code: "ECB_SDMX_SDV", speed: "145ms", type: "XML", status: "Healthy", url: "https://sdw-wsrest.ecb.europa.eu", category: "Global", description: "Eurozone indicators, lending benchmarks, and currency profiles." },
-  { id: "src-8", name: "Eurostat Statistics Database", code: "EUROSTAT_SDMX", speed: "190ms", type: "JSON", status: "Healthy", url: "https://ec.europa.eu/eurostat/api", category: "Global", description: "Official statistical office of the European Union providing high-quality Europe-wide metrics." },
-  { id: "src-9", name: "Asian Development Bank (ADB)", code: "ADB_INDEX_QUERY", speed: "185ms", type: "JSON", status: "Healthy", url: "https://kidb.adb.org/api/v4", category: "Regional", description: "Economic outlook dataset for Asia and Pacific developing markets." },
-  { id: "src-10", name: "UN Comtrade Trade Statistics", code: "UN_COMTRADE_REST", speed: "215ms", type: "JSON", status: "Healthy", url: "https://comtradeapi.un.org", category: "Trade", description: "Detailed international trade data on imports/exports maintained by the UN." },
-  { id: "src-11", name: "Yahoo Finance Market Feed", code: "YAHOO_YQL_DATA", speed: "64ms", type: "JSON", status: "Healthy", url: "https://query1.finance.yahoo.com", category: "Financial", description: "Real-time equities, commodities, futures, crypto values and tickers." },
-  { id: "src-12", name: "SEC EDGAR Financial Filings", code: "SEC_EDGAR_API", speed: "95ms", type: "JSON", status: "Healthy", url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json", category: "Financial", description: "US Securities and Exchange Commission real-time financial reporting XBRL dataset." },
-  { id: "src-13", name: "Bureau of Economic Analysis (BEA)", code: "BEA_API_REST", speed: "80ms", type: "JSON", status: "Healthy", url: "https://apps.bea.gov/api/data", category: "Global", description: "US GDP, personal income, balance of payments, and industrial accounts statistics." },
-  { id: "src-14", name: "International Labour Organization (ILO)", code: "ILO_STAT_REST", speed: "240ms", type: "CSV/SDMX", status: "Healthy", url: "https://sdmx.ilo.org/rest/data", category: "Global", description: "Global labor market database covering employment, wages, and unemployment. Supports official SDMX API (Documentation: https://ilostat.ilo.org/resources/sdmx-api/)." },
-  { id: "src-15", name: "Google News (GNews) Feed", code: "GNEWS_API_FEED", speed: "75ms", type: "JSON", status: "Healthy", url: "https://gnews.io/api/v4", category: "Global", description: "Real-time query grounding and economic news indexing." },
-  { id: "src-16", name: "Elsevier ScienceDirect API", code: "ELSEVIER_REST", speed: "130ms", type: "JSON", status: "Healthy", url: "https://api.elsevier.com/content/search/scopus", category: "Academic", description: "Peer-reviewed scientific journals, literature reviews, and research citations." },
-  { id: "src-17", name: "Springer Nature Lit API", code: "SPRINGER_NATURE_API", speed: "110ms", type: "JSON", status: "Healthy", url: "https://api.springernature.com/meta/v2/json?q=economics", category: "Academic", description: "Meta and OpenAccess publications repository indexing scientific journals." },
-  { id: "src-18", name: "NASA Open Data Catalog", code: "NASA_EARTH_API", speed: "165ms", type: "JSON", status: "Healthy", url: "https://api.nasa.gov/planetary", category: "Global", description: "Earth observation data, climate indexes, and celestial telemetry." }
-];
+// ✅ INI WAJIB ADA DI ATAS (sebelum dipakai di app.post)
+const progressClients = new Map<string, express.Response>();
 
-// Helper fallback data generator if API key is not configured or fails
+function sendProgress(sessionId: string, step: number, message: string) {
+  const client = progressClients.get(sessionId);
+  if (client) {
+    client.write(`data: ${JSON.stringify({ step, message })}\n\n`);
+  }
+}
+
+// ✅ SSE ENDPOINT
+app.get("/api/progress/:sessionId", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders();
+
+  const { sessionId } = req.params;
+  progressClients.set(sessionId, res);
+
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    progressClients.delete(sessionId);
+  });
+});
+
+// ✅ HANYA SATU app.post("/api/query") - YANG INI SAJA!
+app.post("/api/query", async (req, res) => {
+  const { query, sessionId } = req.body;
+  if (!query || typeof query !== "string") {
+    return res.status(400).json({ error: "Query is required and must be a string." });
+  }
+
+  const startTime = Date.now();
+
+  try {
+    const parsedJson = await executePythonAgent(query, sessionId);
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    if (sessionId) {
+      const client = progressClients.get(sessionId);
+      if (client) {
+        client.write(`data: ${JSON.stringify({ step: 5, message: "Done" })}\n\n`);
+        client.end();
+        progressClients.delete(sessionId);
+      }
+    }
+
+    return res.json({ ...parsedJson, processingTime: `${duration}s` });
+
+  } catch (err: any) {
+    console.error("Python agent synthesis failed:", err);
+    try {
+      fs.appendFileSync(
+        path.join(process.cwd(), "server_error.log"),
+        `[${new Date().toISOString()}] Query: "${query}" - Error: ${err.stack || err.message}\n`
+      );
+    } catch (fsErr) {
+      console.error("Failed to write to log file:", fsErr);
+    }
+    const fallback = getFallbackEconomicData(query);
+    return res.json({
+      ...fallback,
+      warning: `UniversalAgenticDataMiner encountered a runtime issue. Technical: ${err.message || "Unknown issue"}`,
+      processingTime: `${((Date.now() - startTime) / 1000).toFixed(1)}s`
+    });
+  }
+});
+
+// ✅ executePythonAgent dengan sessionId
+function executePythonAgent(query: string, sessionId?: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const pythonCommand = process.platform === "win32" ? "python" : "python3";
+
+    const py = spawn(pythonCommand, ["backend.py", query], {
+      env: { 
+        ...process.env,
+        SESSION_ID: sessionId || ""
+      }
+    });
+
+    py.on("error", (err) => reject(err));
+
+    let stdout = "";
+    let stderr = "";
+
+    py.stdout.on("data", (data) => {
+      const txt = data.toString();
+      stdout += txt;
+      console.log("[PYTHON STDOUT]", txt);
+    });
+
+    py.stderr.on("data", (data) => {
+      const txt = data.toString();
+      stderr += txt;
+      console.error("[PYTHON STDERR]", txt);
+
+      const lines = txt.split("\n");
+      for (const line of lines) {
+        const match = line.match(/^PROGRESS:(\d+):(.+)$/);
+        if (match && sessionId) {
+          sendProgress(sessionId, parseInt(match[1]), match[2].trim());
+        }
+      }
+    });
+
+    py.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Python process exited with code ${code}. Error: ${stderr}`));
+      } else {
+        try {
+          const s = stdout;
+          const firstBrace = s.indexOf("{");
+          if (firstBrace === -1) throw new Error("No JSON found in stdout.");
+          const lastBrace = s.lastIndexOf("}");
+          if (lastBrace === -1 || lastBrace < firstBrace) throw new Error("Invalid JSON structure.");
+          const absoluteJsonStr = s.slice(firstBrace, lastBrace + 1).trim();
+          const parsed = JSON.parse(absoluteJsonStr);
+          if (parsed === null || (typeof parsed !== "object" && !Array.isArray(parsed))) {
+            throw new Error("Parsed JSON is not an object/array.");
+          }
+          resolve(parsed);
+        } catch (e: any) {
+          reject(new Error(`Failed to parse Python JSON stdout: ${e.message}. Raw output length: ${stdout.length}`));
+        }
+      }
+    });
+  });
+}
+
+// Helper fallback data generator
 function getFallbackEconomicData(query: string) {
   const qClean = query.toLowerCase();
 
@@ -150,7 +259,6 @@ function getFallbackEconomicData(query: string) {
     };
   }
 
-  // Default Indonesia GDP Growth 2000-2025 or generic lookup
   return {
     title: query.trim() ? `Research Results: ${query}` : "Indonesia GDP Growth 2000-2025",
     sources: ["World Bank", "IMF", "FRED", "ADB"],
@@ -194,113 +302,7 @@ function getFallbackEconomicData(query: string) {
   };
 }
 
-// Helper to execute the dynamic Python bridging agent (Cross-Platform Fixed)
-function executePythonAgent(query: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    // Jalankan "python" jika di Windows, dan "python3" jika di Linux/Mac
-    const pythonCommand = process.platform === "win32" ? "python" : "python3";
-
-    const py = spawn(pythonCommand, ["backend.py", query], {
-      env: { ...process.env } // Pastikan environment variables diteruskan ke Python child-process
-    });
-
-    py.on("error", (err) => {
-      reject(err);
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    py.stdout.on("data", (data) => {
-      const txt = data.toString();
-      stdout += txt;
-      console.log("[PYTHON STDOUT]", txt);
-    });
-
-    py.stderr.on("data", (data) => {
-      const txt = data.toString();
-      stderr += txt;
-      console.error("[PYTHON STDERR]", txt);
-    });
-
-    py.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Python process exited with code ${code}. Error: ${stderr}`));
-      } else {
-        try {
-          // Robust JSON extraction (Windows-safe):
-          // - find the true first '{' (skipping any leading CR/LF and debug text)
-          // - find the absolute last '}'
-          // - then JSON.parse the sliced payload
-
-          const s = stdout;
-          const firstBrace = s.indexOf("{");
-          if (firstBrace === -1) {
-            throw new Error("Could not find any valid JSON structure in Python stdout (no '{' found).");
-          }
-
-          const lastBrace = s.lastIndexOf("}");
-          if (lastBrace === -1 || lastBrace < firstBrace) {
-            throw new Error("Could not find any valid JSON structure in Python stdout (invalid '}' position).");
-          }
-
-          // Slice carefully and trim whitespace/CRLF inside the extracted region
-          const absoluteJsonStr = s.slice(firstBrace, lastBrace + 1).trim();
-
-          // Secure parse: avoid silent coercion; validate the top-level shape
-          const parsed = JSON.parse(absoluteJsonStr);
-          if (parsed === null || (typeof parsed !== "object" && !Array.isArray(parsed))) {
-            throw new Error("Parsed JSON is not an object/array.");
-          }
-
-          resolve(parsed);
-        } catch (e: any) {
-          reject(new Error(`Failed to parse Python JSON stdout: ${e.message}. Raw output length: ${stdout.length}`));
-        }
-      }
-    });
-  });
-}
-
-// 1. POST API for Query Processing (uses server-side Python Agent with tool executors)
-app.post("/api/query", async (req, res) => {
-  const { query } = req.body;
-  if (!query || typeof query !== "string") {
-    return res.status(400).json({ error: "Query is required and must be a string." });
-  }
-
-  const startTime = Date.now();
-
-  try {
-    const parsedJson = await executePythonAgent(query);
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    return res.json({
-      ...parsedJson,
-      processingTime: `${duration}s`
-    });
-
-  } catch (err: any) {
-    console.error("Python agent synthesis failed:", err);
-    try {
-      fs.appendFileSync(
-        path.join(process.cwd(), "server_error.log"),
-        `[${new Date().toISOString()}] Query: "${query}" - Error: ${err.stack || err.message}\n`
-      );
-    } catch (fsErr) {
-      console.error("Failed to write to log file:", fsErr);
-    }
-    // Graceful error recovery with structured fallback format but accurate to query
-    const fallback = getFallbackEconomicData(query);
-    return res.json({
-      ...fallback,
-      warning: `UniversalAgenticDataMiner encountered a runtime issue. Returned verified estimations. Technical: ${err.message || 'Unknown issue'}`,
-      processingTime: `${((Date.now() - startTime) / 1000).toFixed(1)}s`
-    });
-  }
-});
-
-// Config endpoint to let the frontend know if GEMINI_API_KEY is configured
+// ✅ SISA ENDPOINT LAINNYA (tetap sama seperti sebelumnya)
 app.get("/api/config", (req, res) => {
   const geminiKey = process.env.GEMINI_API_KEY;
   const hasGeminiKey = !!geminiKey && geminiKey !== "MY_GEMINI_API_KEY" && geminiKey.trim() !== "";
@@ -310,7 +312,6 @@ app.get("/api/config", (req, res) => {
   });
 });
 
-// Update the configuration key dynamically in .env
 app.post("/api/config", (req, res) => {
   const { apiKey } = req.body;
   if (typeof apiKey !== "string") {
@@ -334,11 +335,8 @@ app.post("/api/config", (req, res) => {
     }
 
     fs.writeFileSync(dotenvPath, content, "utf-8");
-
-    // Update process.env for Node instantly
     process.env.GEMINI_API_KEY = apiKey.trim();
 
-    // Re-initialize fallback client for node if needed
     if (apiKey.trim() !== "" && apiKey.trim() !== "MY_GEMINI_API_KEY") {
       ai = new GoogleGenAI({
         apiKey: apiKey.trim(),
@@ -357,19 +355,16 @@ app.post("/api/config", (req, res) => {
   }
 });
 
-// Retrieves preset or user-saved datasets
 app.get("/api/datasets", (req, res) => {
   res.json(datasetStore);
 });
 
-// Saves a dataset created during active session to My Datasets
 app.post("/api/datasets", (req, res) => {
   const { dataset } = req.body;
   if (!dataset || !dataset.title) {
     return res.status(400).json({ error: "Valid dataset object with title is required to save." });
   }
 
-  // Create clean custom item
   const newId = `ds-${Date.now()}`;
   const record = {
     id: newId,
@@ -398,7 +393,6 @@ app.post("/api/datasets", (req, res) => {
   res.json({ success: true, item: record });
 });
 
-// Deletes a dataset
 app.delete("/api/datasets/:id", (req, res) => {
   const idIndex = datasetStore.findIndex(d => d.id === req.params.id);
   if (idIndex !== -1) {
@@ -408,12 +402,10 @@ app.delete("/api/datasets/:id", (req, res) => {
   res.status(404).json({ error: "Dataset not found" });
 });
 
-// Retrieves list of user's saved query benchmarks
 app.get("/api/saved-queries", (req, res) => {
   res.json(savedQueriesStore);
 });
 
-// Creates a saved query catalog reference
 app.post("/api/saved-queries", (req, res) => {
   const { title, rawQuery, frequency } = req.body;
   const item = {
@@ -428,7 +420,6 @@ app.post("/api/saved-queries", (req, res) => {
   res.json({ success: true, item });
 });
 
-// Deletes a saved query
 app.delete("/api/saved-queries/:id", (req, res) => {
   const queryIndex = savedQueriesStore.findIndex(q => q.id === req.params.id);
   if (queryIndex !== -1) {
@@ -438,12 +429,10 @@ app.delete("/api/saved-queries/:id", (req, res) => {
   res.status(404).json({ error: "Saved query not found" });
 });
 
-// Returns downloads registry
 app.get("/api/downloads", (req, res) => {
   res.json(downloadStore);
 });
 
-// Adds custom downloads trigger
 app.post("/api/downloads", (req, res) => {
   const { filename, size, format } = req.body;
   const item = {
@@ -457,7 +446,6 @@ app.post("/api/downloads", (req, res) => {
   res.json({ success: true, item });
 });
 
-// Deletes a download log
 app.delete("/api/downloads/:id", (req, res) => {
   const idx = downloadStore.findIndex(d => d.id === req.params.id);
   if (idx !== -1) {
@@ -467,12 +455,31 @@ app.delete("/api/downloads/:id", (req, res) => {
   res.status(404).json({ error: "Download history item not found." });
 });
 
-// GET list of active and country Data Sources
+const dataSourcesStore: any[] = [
+  { id: "src-1", name: "World Bank Data API", code: "WB_REST_V2", speed: "118ms", type: "JSON", status: "Healthy", url: "https://api.worldbank.org/v2/country/idn?format=json", category: "Global", description: "Provides global development data, demographic metrics and national profiles." },
+  { id: "src-2", name: "Badan Pusat Statistik (BPS) Indonesia", code: "BPS_IND_API", speed: "172ms", type: "JSON", status: "Healthy", url: "https://webapi.bps.go.id", category: "National", description: "Official statistical agency of Indonesia. Consumer Price Indices, GDP trends, and trade stats." },
+  { id: "src-3", name: "Bank Indonesia (BI) Exchange & Monetary", code: "BI_SEKI_REST", speed: "Coming Soon", type: "JSON", status: "Coming Soon", url: "https://www.bi.go.id/id/statistik/seki", category: "National", description: "Central bank monetary policy indicators, exchange rates, and reserve reserves. (Integration Scheduled)." },
+  { id: "src-4", name: "IMF Statistics Data Network", code: "IMF_SDMX_XML", speed: "230ms", type: "XML", status: "Healthy", url: "https://dataservices.imf.org/REST/SDMX_JSON.svc/Dataflow", category: "Global", description: "International monetary exchange rates, national balance sheets, and global reserves." },
+  { id: "src-5", name: "FRED System (St. Louis Fed Reserve)", code: "FRED_V3_HTTPS", speed: "42ms", type: "JSON", status: "Healthy", url: "https://api.stlouisfed.org/fred/series?series_id=GDP", category: "Global", description: "Premier database for US and global macroeconomic indexes, updated hourly." },
+  { id: "src-6", name: "OECD Stat Link Gate", code: "OECD_REST_API", speed: "310ms", type: "JSON", status: "Healthy", url: "https://sdmx.oecd.org/public/rest/dataflow/all", category: "Global", description: "Cooperation and development metrics across member nations." },
+  { id: "src-7", name: "European Central Bank (ECB)", code: "ECB_SDMX_SDV", speed: "145ms", type: "XML", status: "Healthy", url: "https://sdw-wsrest.ecb.europa.eu", category: "Global", description: "Eurozone indicators, lending benchmarks, and currency profiles." },
+  { id: "src-8", name: "Eurostat Statistics Database", code: "EUROSTAT_SDMX", speed: "190ms", type: "JSON", status: "Healthy", url: "https://ec.europa.eu/eurostat/api", category: "Global", description: "Official statistical office of the European Union providing high-quality Europe-wide metrics." },
+  { id: "src-9", name: "Asian Development Bank (ADB)", code: "ADB_INDEX_QUERY", speed: "185ms", type: "JSON", status: "Healthy", url: "https://kidb.adb.org/api/v4", category: "Regional", description: "Economic outlook dataset for Asia and Pacific developing markets." },
+  { id: "src-10", name: "UN Comtrade Trade Statistics", code: "UN_COMTRADE_REST", speed: "215ms", type: "JSON", status: "Healthy", url: "https://comtradeapi.un.org", category: "Trade", description: "Detailed international trade data on imports/exports maintained by the UN." },
+  { id: "src-11", name: "Yahoo Finance Market Feed", code: "YAHOO_YQL_DATA", speed: "64ms", type: "JSON", status: "Healthy", url: "https://query1.finance.yahoo.com", category: "Financial", description: "Real-time equities, commodities, futures, crypto values and tickers." },
+  { id: "src-12", name: "SEC EDGAR Financial Filings", code: "SEC_EDGAR_API", speed: "95ms", type: "JSON", status: "Healthy", url: "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json", category: "Financial", description: "US Securities and Exchange Commission real-time financial reporting XBRL dataset." },
+  { id: "src-13", name: "Bureau of Economic Analysis (BEA)", code: "BEA_API_REST", speed: "80ms", type: "JSON", status: "Healthy", url: "https://apps.bea.gov/api/data", category: "Global", description: "US GDP, personal income, balance of payments, and industrial accounts statistics." },
+  { id: "src-14", name: "International Labour Organization (ILO)", code: "ILO_STAT_REST", speed: "240ms", type: "CSV/SDMX", status: "Healthy", url: "https://sdmx.ilo.org/rest/data", category: "Global", description: "Global labor market database covering employment, wages, and unemployment. Supports official SDMX API." },
+  { id: "src-15", name: "Google News (GNews) Feed", code: "GNEWS_API_FEED", speed: "75ms", type: "JSON", status: "Healthy", url: "https://gnews.io/api/v4", category: "Global", description: "Real-time query grounding and economic news indexing." },
+  { id: "src-16", name: "Elsevier ScienceDirect API", code: "ELSEVIER_REST", speed: "130ms", type: "JSON", status: "Healthy", url: "https://api.elsevier.com/content/search/scopus", category: "Academic", description: "Peer-reviewed scientific journals, literature reviews, and research citations." },
+  { id: "src-17", name: "Springer Nature Lit API", code: "SPRINGER_NATURE_API", speed: "110ms", type: "JSON", status: "Healthy", url: "https://api.springernature.com/meta/v2/json?q=economics", category: "Academic", description: "Meta and OpenAccess publications repository indexing scientific journals." },
+  { id: "src-18", name: "NASA Open Data Catalog", code: "NASA_EARTH_API", speed: "165ms", type: "JSON", status: "Healthy", url: "https://api.nasa.gov/planetary", category: "Global", description: "Earth observation data, climate indexes, and celestial telemetry." }
+];
+
 app.get("/api/data-sources", (req, res) => {
   res.json(dataSourcesStore);
 });
 
-// POST register a new custom Data Source
 app.post("/api/data-sources", (req, res) => {
   const { name, code, type, url, category, description } = req.body;
   if (!name || !code || !url) {
@@ -496,8 +503,6 @@ app.post("/api/data-sources", (req, res) => {
   res.json({ success: true, item: newItem });
 });
 
-// POST simulate ping/latency test for a specific Data Source
-// Real API Latency Test
 app.post("/api/data-sources/:id/test", async (req, res) => {
   const source = dataSourcesStore.find(
     (s) => s.id === req.params.id
@@ -534,7 +539,7 @@ app.post("/api/data-sources/:id/test", async (req, res) => {
     );
 
     source.speed = `${latency}ms`;
-      source.metrics = {
+    source.metrics = {
       latencyMs: latency,
       httpStatus: response.status,
       testedAt: new Date().toISOString(),
@@ -580,7 +585,6 @@ app.post("/api/data-sources/:id/test", async (req, res) => {
   }
 });
 
-// DELETE a custom registered Data Source
 app.delete("/api/data-sources/:id", (req, res) => {
   const idx = dataSourcesStore.findIndex(s => s.id === req.params.id);
   if (idx !== -1) {
@@ -590,7 +594,6 @@ app.delete("/api/data-sources/:id", (req, res) => {
   res.status(404).json({ error: "Data Source not found." });
 });
 
-// Setup Vite in development or static serving inside production
 async function startViteMiddleware() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -607,7 +610,6 @@ async function startViteMiddleware() {
   }
 }
 
-// For Vercel Serverless Support
 export default app;
 
 startViteMiddleware().then(() => {
